@@ -241,7 +241,7 @@
   let rankedWarsCache = {};
   let latestRows = [];
   let sortKey = "totalPay";
-  let sortDir = "desc"; // "asc" | "desc"
+  let sortDir = "desc";
 
   const COLUMNS = [
     { key: "salaried", label: "Salaried", defaultDir: "desc", type: "bool" },
@@ -480,15 +480,44 @@
         );
       }
 
-      setStatus(`Fetching attacks for ${formatTctDate(fromTs)}...`);
-      const atkRes = await fetch(`https://api.torn.com/faction/?selections=attacks&from=${fromTs}&to=${toTs}&key=${encodeURIComponent(key)}`);
-      const atkData = await atkRes.json();
-      if (atkData.error) {
-        recalculate();
-        return setStatus(`Torn API Error (${atkData.error.code}): ${atkData.error.error}`, "err");
+      // Paginate backward through Torn's 100-attack-per-request window
+      let cursorTo = toTs;
+      let pagesFetched = 0;
+      const maxPages = 15;
+      const incomingAttacks = {};
+
+      for (let page = 0; page < maxPages; page++) {
+        if (cursorTo < fromTs) break;
+        setStatus(`Fetching attacks for ${formatTctDate(fromTs)} (page ${page + 1})...`);
+
+        const atkRes = await fetch(
+          `https://api.torn.com/faction/?selections=attacks&from=${fromTs}&to=${cursorTo}&key=${encodeURIComponent(key)}`
+        );
+        const atkData = await atkRes.json();
+        if (atkData.error) {
+          recalculate();
+          return setStatus(`Torn API Error (${atkData.error.code}): ${atkData.error.error}`, "err");
+        }
+
+        const batch = atkData.attacks || {};
+        const entries = Object.values(batch);
+        pagesFetched += 1;
+        if (entries.length === 0) break;
+
+        Object.assign(incomingAttacks, batch);
+
+        let oldestTs = Infinity;
+        for (const a of entries) {
+          const t = Number(a.timestamp_ended || a.timestamp_started || 0);
+          if (t > 0 && t < oldestTs) oldestTs = t;
+        }
+
+        if (!Number.isFinite(oldestTs) || oldestTs <= fromTs || entries.length < 100) {
+          break;
+        }
+        cursorTo = oldestTs - 1;
       }
 
-      const incomingAttacks = atkData.attacks || {};
       attacksMap = { ...attacksMap, ...incomingAttacks };
 
       if (db && fromTs) {
@@ -503,7 +532,7 @@
 
       recalculate();
       setStatus(
-        `Synced ${Object.keys(membersMap).length} members and ${Object.keys(attacksMap).length} attacks.`,
+        `Synced ${Object.keys(membersMap).length} members and ${Object.keys(attacksMap).length} attacks across ${pagesFetched} page(s).`,
         "ok"
       );
     } catch (err) {
