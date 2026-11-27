@@ -19,7 +19,7 @@
     }
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
     body { margin: 0; padding: 20px; background: var(--bg); color: var(--text); }
-    .container { max-width: 1360px; margin: 0 auto; }
+    .container { max-width: 1420px; margin: 0 auto; }
     h1 { margin: 0 0 16px; font-size: 1.5rem; }
     .card {
       background: var(--card);
@@ -77,7 +77,9 @@
     .stat-box strong { font-size: 1.05rem; color: var(--green); }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.88rem; }
     th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: right; }
-    th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+    th:nth-child(1), td:nth-child(1),
+    th:nth-child(2), td:nth-child(2),
+    th:nth-child(3), td:nth-child(3) { text-align: left; }
     th {
       color: var(--muted);
       font-weight: 600;
@@ -90,6 +92,7 @@
     .sort-arrow { font-size: 0.72rem; margin-left: 4px; opacity: 0.75; }
     th.sorted { color: var(--text); }
     tr:hover { background: #1e2533; }
+    tr.excluded-row { opacity: 0.52; }
     input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
     .status { font-size: 0.84rem; color: var(--amber); margin-top: 10px; line-height: 1.4; }
     .status.ok { color: var(--green); }
@@ -246,6 +249,7 @@
 
   const COLUMNS = [
     { key: "salaried", label: "Salaried", defaultDir: "desc", type: "bool" },
+    { key: "excluded", label: "Exclude", defaultDir: "desc", type: "bool" },
     { key: "name", label: "Member", defaultDir: "asc", type: "string" },
     { key: "warHits", label: "War Hits", defaultDir: "desc", type: "num" },
     { key: "warRespect", label: "War Respect", defaultDir: "desc", type: "num" },
@@ -306,7 +310,7 @@
     let cmp = 0;
 
     if (col.type === "bool") {
-      cmp = (a.salaried ? 1 : 0) - (b.salaried ? 1 : 0);
+      cmp = (a[sortKey] ? 1 : 0) - (b[sortKey] ? 1 : 0);
     } else if (col.type === "string") {
       cmp = String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
     } else {
@@ -370,7 +374,19 @@
       if (cfg.outsideHitRespect !== undefined) document.getElementById("outsideHitRespect").value = cfg.outsideHitRespect;
       if (cfg.salariedEarnHits !== undefined) document.getElementById("salariedEarnHits").value = cfg.salariedEarnHits;
 
-      if (warData.members) membersMap = warData.members;
+      if (warData.members) {
+        const normalizedMembers = {};
+        for (const [id, m] of Object.entries(warData.members)) {
+          normalizedMembers[id] = {
+            id,
+            name: m.name || `ID ${id}`,
+            salaried: Boolean(m.salaried),
+            excluded: Boolean(m.excluded)
+          };
+        }
+        membersMap = normalizedMembers;
+      }
+
       attacksMap = warData.attacks || {};
       recalculate();
       setStatus(`Loaded saved war (${formatTctDate(Number(warKey))}, ${Object.keys(attacksMap).length} attacks).`, "ok");
@@ -424,7 +440,8 @@
         nextMembers[String(id)] = {
           id: String(id),
           name: info.name || `Member ${id}`,
-          salaried: Boolean(membersMap[String(id)]?.salaried)
+          salaried: Boolean(membersMap[String(id)]?.salaried),
+          excluded: Boolean(membersMap[String(id)]?.excluded)
         };
       }
       membersMap = { ...membersMap, ...nextMembers };
@@ -591,12 +608,18 @@
       stats[id] = { warHits: 0, warRespect: 0, chainOutsideHits: 0, ignoredOutsideHits: 0 };
     }
 
+    // Mutually exclusive classification: every winning attack is counted in exactly ONE bucket
     for (const run of runs) {
       const isChain = run.length >= 10;
       for (const atk of run) {
         const uid = String(atk.attacker_id);
         if (!stats[uid]) {
-          membersMap[uid] = { id: uid, name: atk.attacker_name || `ID ${uid}`, salaried: false };
+          membersMap[uid] = {
+            id: uid,
+            name: atk.attacker_name || `ID ${uid}`,
+            salaried: false,
+            excluded: false
+          };
           stats[uid] = { warHits: 0, warRespect: 0, chainOutsideHits: 0, ignoredOutsideHits: 0 };
         }
 
@@ -627,7 +650,7 @@
     const baseFactionCut = netAfterTax * (factionCutPct / 100);
     const distributable = netAfterTax - baseFactionCut;
 
-    const salariedMembers = Object.values(membersMap).filter(m => m.salaried);
+    const salariedMembers = Object.values(membersMap).filter(m => m.salaried && !m.excluded);
     const salariedPool = salariedMembers.length > 0 ? distributable * (salariedPct / 100) : 0;
     const remainingPool = distributable - salariedPool;
 
@@ -641,8 +664,9 @@
       const rawWeightedRespect = s.warRespect + (s.chainOutsideHits * outsideHitRespect);
       const rawQualifyingHits = s.warHits + s.chainOutsideHits;
 
-      const eligibleRespect = (!m.salaried || salariedEarnHits) ? rawWeightedRespect : 0;
-      const eligibleHits = (!m.salaried || salariedEarnHits) ? rawQualifyingHits : 0;
+      const isPayable = !m.excluded && (!m.salaried || salariedEarnHits);
+      const eligibleRespect = isPayable ? rawWeightedRespect : 0;
+      const eligibleHits = isPayable ? rawQualifyingHits : 0;
 
       totalWeightedRespect += eligibleRespect;
       totalQualifyingHits += eligibleHits;
@@ -654,6 +678,9 @@
 
     let totalDistributed = 0;
     latestRows = rows.map(r => {
+      if (r.excluded) {
+        return { ...r, salaryPay: 0, respectPay: 0, hitPay: 0, totalPay: 0 };
+      }
       const salaryPay = r.salaried ? salaryPerPerson : 0;
       const respectPay = totalWeightedRespect > 0
         ? Math.floor(remainingPool * (r.eligibleRespect / totalWeightedRespect))
@@ -684,13 +711,14 @@
   function renderTable() {
     const tbody = document.getElementById("memberTableBody");
     if (latestRows.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; color:var(--muted); padding:16px;">No members loaded yet. Sync from Torn or select a saved war.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; color:var(--muted); padding:16px;">No members loaded yet. Sync from Torn or select a saved war.</td></tr>`;
       return;
     }
 
     tbody.innerHTML = latestRows.map(r => `
-      <tr>
-        <td><input type="checkbox" name="salaried_${escapeHtml(r.id)}" ${r.salaried ? "checked" : ""} onchange="toggleSalaried('${escapeHtml(r.id)}', this.checked)" /></td>
+      <tr class="${r.excluded ? "excluded-row" : ""}">
+        <td><input type="checkbox" name="salaried_${escapeHtml(r.id)}" ${r.salaried ? "checked" : ""} onchange="toggleMemberFlag('${escapeHtml(r.id)}', 'salaried', this.checked)" /></td>
+        <td><input type="checkbox" name="excluded_${escapeHtml(r.id)}" ${r.excluded ? "checked" : ""} onchange="toggleMemberFlag('${escapeHtml(r.id)}', 'excluded', this.checked)" /></td>
         <td>${escapeHtml(r.name)} [${escapeHtml(r.id)}]</td>
         <td>${r.warHits}</td>
         <td>${r.warRespect.toFixed(2)}</td>
@@ -700,14 +728,14 @@
         <td>${formatMoney(r.salaryPay)}</td>
         <td>${formatMoney(r.respectPay)}</td>
         <td style="color: var(--amber);">${formatMoney(r.hitPay)}</td>
-        <td style="color: var(--green); font-weight: 700;">${formatMoney(r.totalPay)}</td>
+        <td style="color: ${r.excluded ? "var(--muted)" : "var(--green)"}; font-weight: 700;">${formatMoney(r.totalPay)}</td>
       </tr>
     `).join("");
   }
 
-  function toggleSalaried(id, checked) {
+  function toggleMemberFlag(id, flag, checked) {
     if (membersMap[id]) {
-      membersMap[id].salaried = checked;
+      membersMap[id][flag] = checked;
       recalculate();
     }
   }
@@ -735,12 +763,13 @@
           outsideHitRespect: Number(document.getElementById("outsideHitRespect").value) || 0,
           salariedEarnHits: document.getElementById("salariedEarnHits").value,
           salariedIds: Object.values(membersMap).filter(m => m.salaried).map(m => m.id),
+          excludedIds: Object.values(membersMap).filter(m => m.excluded).map(m => m.id),
           savedAt: Date.now()
         }
       });
       await refreshSavedWarsList();
       document.getElementById("savedWarSelect").value = warKey;
-      setStatus("Saved war roster, salaried flags, and payout settings to Firebase.", "ok");
+      setStatus("Saved war roster, salaried/excluded flags, and payout settings to Firebase.", "ok");
     } catch (err) {
       setStatus(`Failed to save war: ${err.message}`, "err");
     }
@@ -748,7 +777,7 @@
 
   function copyPayoutList() {
     const lines = latestRows
-      .filter(r => r.totalPay > 0)
+      .filter(r => !r.excluded && r.totalPay > 0)
       .map(r => `${r.name} [${r.id}] - ${formatMoney(r.totalPay)}`);
     if (lines.length === 0) return setStatus("No payouts above $0 to copy.", "err");
     navigator.clipboard.writeText(lines.join("\n"));
