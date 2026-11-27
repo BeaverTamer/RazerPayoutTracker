@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:," />
+  <title>Faction War Payout Calculator</title>
+  <style>
+    :root {
+      --bg: #0f131a;
+      --card: #181e29;
+      --border: #2a3344;
+      --text: #e6ecf5;
+      --muted: #8b9bb4;
+      --accent: #3b82f6;
+      --green: #10b981;
+      --amber: #f59e0b;
+      --red: #ef4444;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; padding: 10px; background: var(--bg); color: var(--text); }
+    .container { max-width: 1480px; margin: 0 auto; }
+    h1 { margin: 0 0 12px; font-size: 1.3rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+    }
+    .grid > div {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      min-width: 0;
+    }
+    label {
+      display: block;
+      font-size: 0.76rem;
+      line-height: 1.25;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+    input, select, button {
+      width: 100%;
+      height: 36px;
+      padding: 7px 9px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #0d1117;
+      color: var(--text);
+      font-size: 0.88rem;
+      margin-top: auto;
+    }
+    button {
+      background: var(--accent);
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { opacity: 0.92; }
+    button.secondary { background: #263042; }
+    button.green { background: var(--green); color: #062419; }
+    details {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    summary {
+      cursor: pointer;
+      font-size: 0.8rem;
+      color: var(--muted);
+      user-select: none;
+    }
+    summary:hover { color: var(--text); }
+    .summary-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      align-items: stretch;
+    }
+    .stat-box {
+      background: #111620;
+      padding: 9px 10px;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-width: 0;
+    }
+    .stat-box span { display: block; font-size: 0.72rem; line-height: 1.25; color: var(--muted); margin-bottom: 4px; }
+    .stat-box strong { font-size: 0.98rem; color: var(--green); font-variant-numeric: tabular-nums; }
+    .table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    table {
+      width: 1%;
+      border-collapse: collapse;
+      margin-top: 6px;
+      font-size: 0.78rem;
+      table-layout: auto;
+    }
+    th, td {
+      padding: 5px 4px;
+      border-bottom: 1px solid var(--border);
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    th:nth-child(1), td:nth-child(1),
+    th:nth-child(2), td:nth-child(2),
+    th:nth-child(3), td:nth-child(3),
+    th:nth-child(4), td:nth-child(4) {
+      text-align: center;
+      padding-left: 3px;
+      padding-right: 3px;
+    }
+    th:nth-child(5), td:nth-child(5) {
+      text-align: left;
+      padding-right: 8px;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      background: #131822;
+      cursor: pointer;
+      user-select: none;
+      line-height: 1.1;
+      vertical-align: bottom;
+    }
+    th:hover { color: var(--text); background: #19202e; }
+    .sort-arrow { font-size: 0.62rem; margin-left: 1px; opacity: 0.75; }
+    th.sorted { color: var(--text); }
+    tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.024); }
+    tbody tr:hover { background: rgba(59, 130, 246, 0.11); }
+    tbody tr.excluded-row { background: rgba(239, 68, 68, 0.04); opacity: 0.52; }
+    tbody tr.excluded-row:hover { background: rgba(239, 68, 68, 0.08); }
+    .cap-badge {
+      display: inline-block;
+      font-size: 0.66rem;
+      color: var(--amber);
+      margin-left: 2px;
+      font-weight: 600;
+    }
+    input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      cursor: pointer;
+      vertical-align: middle;
+    }
+    .status { font-size: 0.82rem; color: var(--amber); margin-top: 8px; line-height: 1.4; }
+    .status.ok { color: var(--green); }
+    .status.err { color: var(--red); }
+
+    @media (max-width: 640px) {
+      body { padding: 8px; }
+      .card { padding: 10px; }
+      .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .summary-bar {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      label {
+        font-size: 0.73rem;
+      }
+      input, select {
+        font-size: 0.84rem;
+        padding: 6px 8px;
+      }
+      table { font-size: 0.72rem; }
+      th, td { padding: 4px 2.5px; }
+      th:nth-child(5), td:nth-child(5) { padding-right: 6px; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Faction War Payout Calculator</h1>
+
+  <!-- 1. API & War Selection -->
+  <div class="card">
+    <div class="grid">
+      <div>
+        <label for="apiKey">Torn API Key (Saved Locally Only)</label>
+        <input type="password" id="apiKey" name="apiKey" autocomplete="off" placeholder="Enter Torn API Key" oninput="persistLocalApiKey()" />
+      </div>
+      <div>
+        <label for="rankedWarSelect">Ranked War (From Torn)</label>
+        <select id="rankedWarSelect" name="rankedWarSelect" onchange="selectRankedWar(this.value)">
+          <option value="">-- Sync to load Ranked Wars --</option>
+        </select>
+      </div>
+      <div>
+        <label for="savedWarSelect">Saved War (From Firebase)</label>
+        <select id="savedWarSelect" name="savedWarSelect" onchange="loadSavedWar(this.value)">
+          <option value="">-- Select Saved War --</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;">
+      <button type="button" style="width:auto;" onclick="syncTornData()">Sync War &amp; Attacks from Torn</button>
+      <button type="button" class="secondary" style="width:auto;" onclick="refreshSavedWarsList()">Refresh Saved Wars</button>
+    </div>
+
+    <details>
+      <summary>Advanced / Manual Time Window &amp; Faction IDs</summary>
+      <div class="grid" style="margin-top:8px;">
+        <div>
+          <label for="warStart">War Start (UNIX)</label>
+          <input type="number" id="warStart" name="warStart" placeholder="Auto-filled" oninput="recalculate()" />
+        </div>
+        <div>
+          <label for="warEnd">War End (UNIX)</label>
+          <input type="number" id="warEnd" name="warEnd" placeholder="Auto-filled" oninput="recalculate()" />
+        </div>
+        <div>
+          <label for="myFactionId">Your Faction ID</label>
+          <input type="number" id="myFactionId" name="myFactionId" placeholder="Auto-filled" oninput="recalculate()" />
+        </div>
+        <div>
+          <label for="enemyFactionId">Enemy Faction ID</label>
+          <input type="number" id="enemyFactionId" name="enemyFactionId" placeholder="Auto-filled" oninput="recalculate()" />
+        </div>
+      </div>
+    </details>
+
+    <div id="status" class="status">Ready. Enter your Torn API key and click Sync War &amp; Attacks from Torn.</div>
+  </div>
+
+  <!-- 2. Payout Settings -->
+  <div class="card">
+    <div class="grid">
+      <div>
+        <label for="sellAmount">Cache Gross Sell Amount ($)</label>
+        <input type="number" id="sellAmount" name="sellAmount" value="500000000" oninput="recalculate()" />
+      </div>
+      <div>
+        <label for="sellTaxPct">Sell Tax (%)</label>
+        <input type="number" id="sellTaxPct" name="sellTaxPct" value="5" step="0.1" oninput="recalculate()" />
+      </div>
+      <div>
+        <label for="factionCutPct">Faction Cut (%)</label>
+        <input type="number" id="factionCutPct" name="factionCutPct" value="10" step="0.1" oninput="recalculate()" />
+      </div>
+      <div>
+        <label for="salariedPct">Salaried Pool (%)</label>
+        <input type="number" id="salariedPct" name="salariedPct" value="15" step="0.1" oninput="recalculate()" />
+      </div>
+      <div>
+        <label for="outsideHitRespect">Non-War Chain Hit Respect</label>
+        <input type="number" id="outsideHitRespect" name="outsideHitRespect" value="2.5" step="0.1" oninput="recalculate()" />
+      </div>
+      <div>
+        <label for="salariedEarnHits">Salaried Also Earn Hit/Respect Pay?</label>
+        <select id="salariedEarnHits" name="salariedEarnHits" onchange="recalculate()">
+          <option value="yes">Yes (Salary + Hits)</option>
+          <option value="no">No (Salary Only)</option>
+        </select>
+      </div>
+      <div>
+        <label for="hitLimit">Hit Limit (0 = No Limit)</label>
+        <input type="number" id="hitLimit" name="hitLimit" value="0" min="0" step="1" oninput="recalculate()" />
+      </div>
+      <div>
+        <label for="payoutLimit">Max Payout Limit ($) (0 = No Limit)</label>
+        <input type="number" id="payoutLimit" name="payoutLimit" value="0" min="0" step="1000000" oninput="recalculate()" />
+      </div>
+    </div>
+
+    <div class="summary-bar">
+      <div class="stat-box"><span>Net After Tax</span><strong id="netAfterTax">$0</strong></div>
+      <div class="stat-box"><span>Faction Cut ($)</span><strong id="factionCutAmt">$0</strong></div>
+      <div class="stat-box"><span>Salaried Pool ($)</span><strong id="salariedPoolAmt">$0</strong></div>
+      <div class="stat-box"><span>Remaining Pool ($)</span><strong id="hitPoolAmt">$0</strong></div>
+      <div class="stat-box"><span>Weighted Respect</span><strong id="totalRespect">0.00</strong></div>
+      <div class="stat-box"><span>Counted Hits</span><strong id="totalQualifyingHits">0</strong></div>
+    </div>
+  </div>
+
+  <!-- 3. Member Payout Table -->
+  <div class="card">
+    <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+      <strong>Member Breakdown</strong>
+      <div style="display:flex; gap:8px; width:auto;">
+        <button type="button" class="secondary" style="width:auto;" onclick="saveWarToFirebase()">Save War to DB</button>
+        <button type="button" class="green" style="width:auto;" onclick="copyPayoutList()">Copy Payout List</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr id="memberTableHeadRow"></tr>
+        </thead>
+        <tbody id="memberTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+  const LOCAL_API_KEY_STORAGE = "razers_war_payout_api_key";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyC1B6-tReQgkuST7sQW0erUZMpWCQTEhFE",
+    authDomain: "razersalliancewarpayout.firebaseapp.com",
+    databaseURL: "https://razersalliancewarpayout-default-rtdb.firebaseio.com",
+    projectId: "razersalliancewarpayout",
+    storageBucket: "razersalliancewarpayout.firebasestorage.app",
+    messagingSenderId: "1048074179524",
+    appId: "1:1048074179524:web:d2357307b32a8159a08a91"
+  };
+
+  let db = null;
+  if (typeof firebase !== "undefined" && firebase.apps) {
+    try {
+      const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(firebaseConfig);
+      db = app.database();
+    } catch (err) {
+      console.error("Firebase init error:", err);
+    }
+  }
+
+  function loadLocalApiKey() {
+    try {
+      const saved = localStorage.getItem(LOCAL_API_KEY_STORAGE);
+      if (saved) document.getElementById("apiKey").value = saved;
+    } catch (_) {}
+  }
+
+  function persistLocalApiKey() {
+    try {
+      const val = document.getElementById("apiKey").value.trim();
+      if (val) localStorage.setItem(LOCAL_API_KEY_STORAGE, val);
+      else localStorage.removeItem(LOCAL_API_KEY_STORAGE);
+    } catch (_) {}
+  }
+
+  let membersMap = {};
+  let attacksMap = {};
+  let rankedWarsCache = {};
+  let latestRows = [];
+  let sortKey = "respectPay";
+  let sortDir = "desc";
+
+  const COLUMNS = [
+    { key: "salaried", label: "$", title: "Salaried", defaultDir: "desc", type: "bool" },
+    { key: "excluded", label: "X", title: "Exclude from Payment", defaultDir: "desc", type: "bool" },
+    { key: "hitLimited", label: "Hit Lim", title: "Apply Hit Limit to Member", defaultDir: "desc", type: "bool" },
+    { key: "payLimited", label: "$ Lim", title: "Apply Max Payout Limit to Member", defaultDir: "desc", type: "bool" },
+    { key: "name", label: "Member", title: "Member", defaultDir: "asc", type: "string" },
+    { key: "warHits", label: "Hits", title: "War Hits", defaultDir: "desc", type: "num" },
+    { key: "warRespect", label: "Respect", title: "War Respect", defaultDir: "desc", type: "num" },
+    { key: "chainOutsideHits", label: "Outside Chain", title: "Outside Chain Hits (10+)", defaultDir: "desc", type: "num" },
+    { key: "ignoredOutsideHits", label: "Outside Non-Chain", title: "Outside Non-Chain Hits (<10)", defaultDir: "desc", type: "num" },
+    { key: "weightedRespect", label: "Weighted Respect", title: "Counted Weighted Respect", defaultDir: "desc", type: "num" },
+    { key: "salaryPay", label: "Salary Pay", title: "Salary Pay", defaultDir: "desc", type: "num" },
+    { key: "respectPay", label: "Respect Pay", title: "Respect Pay", defaultDir: "desc", type: "num" },
+    { key: "hitPay", label: "Hit Pay", title: "Hit Pay", defaultDir: "desc", type: "num" }
+  ];
+
+  const WIN_RESULTS = new Set(["Attacked", "Mugged", "Hospitalized"]);
+
+  function escapeHtml(str) {
+    return String(str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function formatTctDate(unixSec) {
+    if (!unixSec) return "Unknown";
+    return new Date(unixSec * 1000).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC"
+    }) + " TCT";
+  }
+
+  function renderTableHeaders() {
+    const headRow = document.getElementById("memberTableHeadRow");
+    headRow.innerHTML = COLUMNS.map(col => {
+      const isSorted = sortKey === col.key;
+      const arrow = isSorted ? (sortDir === "asc" ? "▲" : "▼") : "⇅";
+      return `<th class="${isSorted ? "sorted" : ""}" title="${escapeHtml(col.title || col.label)}" onclick="setSortColumn('${col.key}')">${escapeHtml(col.label)}<span class="sort-arrow">${arrow}</span></th>`;
+    }).join("");
+  }
+
+  function setSortColumn(key) {
+    const col = COLUMNS.find(c => c.key === key);
+    if (sortKey === key) {
+      sortDir = sortDir === "asc" ? "desc" : "asc";
+    } else {
+      sortKey = key;
+      sortDir = col?.defaultDir || "desc";
+    }
+    sortLatestRows();
+    renderTableHeaders();
+    renderTable();
+  }
+
+  function compareRows(a, b) {
+    const col = COLUMNS.find(c => c.key === sortKey) || { type: "num" };
+    const mult = sortDir === "asc" ? 1 : -1;
+    let cmp = 0;
+
+    if (col.type === "bool") {
+      cmp = (a[sortKey] ? 1 : 0) - (b[sortKey] ? 1 : 0);
+    } else if (col.type === "string") {
+      cmp = String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
+    } else {
+      cmp = (Number(a[sortKey]) || 0) - (Number(b[sortKey]) || 0);
+    }
+
+    if (cmp !== 0) return cmp * mult;
+    return String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
+  }
+
+  function sortLatestRows() {
+    latestRows.sort(compareRows);
+  }
+
+  async function refreshSavedWarsList() {
+    if (!db) return;
+    try {
+      const snap = await db.ref("wars").once("value");
+      const warsObj = snap.val() || {};
+      const select = document.getElementById("savedWarSelect");
+      const currentVal = select.value;
+
+      select.innerHTML = `<option value="">-- Select Saved War (${Object.keys(warsObj).length}) --</option>`;
+      const keys = Object.keys(warsObj).sort((a, b) => Number(b) - Number(a));
+      for (const key of keys) {
+        const w = warsObj[key] || {};
+        const cfg = w.payoutConfig || {};
+        const atkCount = w.attacks ? Object.keys(w.attacks).length : 0;
+        const dateLabel = formatTctDate(Number(key));
+        const label = cfg.enemyName
+          ? `${dateLabel} vs ${cfg.enemyName} (${atkCount} hits)`
+          : `${dateLabel} (${atkCount} hits)`;
+        const opt = document.createElement("option");
+        opt.value = key;
+        opt.textContent = label;
+        select.appendChild(opt);
+      }
+
+      if (currentVal && warsObj[currentVal]) select.value = currentVal;
+    } catch (err) {
+      setStatus(`Failed to read saved wars: ${err.message}`, "err");
+    }
+  }
+
+  async function loadSavedWar(warKey) {
+    if (!db || !warKey) return;
+    try {
+      const snap = await db.ref(`wars/${warKey}`).once("value");
+      const warData = snap.val();
+      if (!warData) return setStatus(`No data found for war ${warKey}.`, "err");
+
+      const cfg = warData.payoutConfig || {};
+      if (cfg.warStart !== undefined) document.getElementById("warStart").value = cfg.warStart;
+      if (cfg.warEnd !== undefined) document.getElementById("warEnd").value = cfg.warEnd;
+      if (cfg.myFactionId !== undefined) document.getElementById("myFactionId").value = cfg.myFactionId;
+      if (cfg.enemyFactionId !== undefined) document.getElementById("enemyFactionId").value = cfg.enemyFactionId;
+      if (cfg.sellAmount !== undefined) document.getElementById("sellAmount").value = cfg.sellAmount;
+      if (cfg.sellTaxPct !== undefined) document.getElementById("sellTaxPct").value = cfg.sellTaxPct;
+      if (cfg.factionCutPct !== undefined) document.getElementById("factionCutPct").value = cfg.factionCutPct;
+      if (cfg.salariedPct !== undefined) document.getElementById("salariedPct").value = cfg.salariedPct;
+      if (cfg.outsideHitRespect !== undefined) document.getElementById("outsideHitRespect").value = cfg.outsideHitRespect;
+      if (cfg.salariedEarnHits !== undefined) document.getElementById("salariedEarnHits").value = cfg.salariedEarnHits;
+      document.getElementById("hitLimit").value = cfg.hitLimit !== undefined ? cfg.hitLimit : 0;
+      document.getElementById("payoutLimit").value = cfg.payoutLimit !== undefined ? cfg.payoutLimit : 0;
+
+      if (warData.members) {
+        const normalizedMembers = {};
+        for (const [id, m] of Object.entries(warData.members)) {
+          normalizedMembers[id] = {
+            id,
+            name: m.name || `ID ${id}`,
+            salaried: Boolean(m.salaried),
+            excluded: Boolean(m.excluded),
+            hitLimited: Boolean(m.hitLimited),
+            payLimited: Boolean(m.payLimited)
+          };
+        }
+        membersMap = normalizedMembers;
+      }
+
+      attacksMap = warData.attacks || {};
+      recalculate();
+      setStatus(`Loaded saved war (${formatTctDate(Number(warKey))}, ${Object.keys(attacksMap).length} attacks).`, "ok");
+    } catch (err) {
+      setStatus(`Error loading saved war: ${err.message}`, "err");
+    }
+  }
+
+  function applyRankedWarSelection(warId, myFactionId) {
+    const entry = rankedWarsCache[warId];
+    if (!entry) return;
+    const wInfo = entry.war || entry;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const startTs = Number(wInfo.start || 0);
+    const rawEnd = Number(wInfo.end || 0);
+    const endTs = rawEnd > 0 ? rawEnd : Math.max(nowSec, startTs);
+
+    document.getElementById("warStart").value = startTs;
+    document.getElementById("warEnd").value = endTs;
+
+    if (entry.factions) {
+      const enemyId = Object.keys(entry.factions).find(fid => Number(fid) !== Number(myFactionId));
+      if (enemyId) document.getElementById("enemyFactionId").value = enemyId;
+    }
+  }
+
+  async function selectRankedWar(warId) {
+    if (!warId) return;
+    const myFactionId = Number(document.getElementById("myFactionId").value) || 0;
+    applyRankedWarSelection(warId, myFactionId);
+    await syncTornData(true);
+  }
+
+  async function syncTornData(keepSelectedWar = false) {
+    const key = document.getElementById("apiKey").value.trim();
+    if (!key) return setStatus("Please enter a Torn API key first.", "err");
+    persistLocalApiKey();
+
+    setStatus("Fetching faction roster and ranked wars from Torn...");
+    try {
+      const baseRes = await fetch(`https://api.torn.com/faction/?selections=basic,rankedwars&key=${encodeURIComponent(key)}`);
+      const baseData = await baseRes.json();
+      if (baseData.error) {
+        return setStatus(`Torn API Error (${baseData.error.code}): ${baseData.error.error}`, "err");
+      }
+
+      const detectedFactionId = Number(baseData.ID || baseData.id || 0);
+      if (detectedFactionId) document.getElementById("myFactionId").value = detectedFactionId;
+
+      const nextMembers = {};
+      for (const [id, info] of Object.entries(baseData.members || {})) {
+        nextMembers[String(id)] = {
+          id: String(id),
+          name: info.name || `Member ${id}`,
+          salaried: Boolean(membersMap[String(id)]?.salaried),
+          excluded: Boolean(membersMap[String(id)]?.excluded),
+          hitLimited: Boolean(membersMap[String(id)]?.hitLimited),
+          payLimited: Boolean(membersMap[String(id)]?.payLimited)
+        };
+      }
+      membersMap = { ...membersMap, ...nextMembers };
+
+      rankedWarsCache = baseData.rankedwars || {};
+      const warSelect = document.getElementById("rankedWarSelect");
+      const prevWarId = warSelect.value;
+      const sortedEntries = Object.entries(rankedWarsCache).sort((a, b) => {
+        const startA = Number((a[1].war || a[1]).start || 0);
+        const startB = Number((b[1].war || b[1]).start || 0);
+        return startB - startA;
+      });
+
+      warSelect.innerHTML = `<option value="">-- Select Ranked War (${sortedEntries.length}) --</option>`;
+      const nowSec = Math.floor(Date.now() / 1000);
+
+      for (const [warId, entry] of sortedEntries) {
+        const wInfo = entry.war || entry;
+        const startTs = Number(wInfo.start || 0);
+        const endTs = Number(wInfo.end || 0);
+        const enemyId = entry.factions
+          ? Object.keys(entry.factions).find(fid => Number(fid) !== detectedFactionId)
+          : "";
+        const enemyName = enemyId && entry.factions[enemyId]?.name
+          ? entry.factions[enemyId].name
+          : `Faction [${enemyId || "?"}]`;
+
+        let statusTag = "Completed";
+        if (startTs > nowSec) statusTag = "Upcoming";
+        else if (!endTs || endTs === 0) statusTag = "Active";
+
+        const opt = document.createElement("option");
+        opt.value = warId;
+        opt.textContent = `${formatTctDate(startTs)} vs ${enemyName} (${statusTag})`;
+        warSelect.appendChild(opt);
+      }
+
+      if (keepSelectedWar && prevWarId && rankedWarsCache[prevWarId]) {
+        warSelect.value = prevWarId;
+      } else if (sortedEntries.length > 0) {
+        const startedWar = sortedEntries.find(([, entry]) => Number((entry.war || entry).start || 0) <= nowSec);
+        const chosenId = (startedWar || sortedEntries[0])[0];
+        warSelect.value = chosenId;
+        applyRankedWarSelection(chosenId, detectedFactionId);
+      }
+
+      const fromTs = Number(document.getElementById("warStart").value) || (nowSec - 86400);
+      const toTs = Math.max(Number(document.getElementById("warEnd").value) || nowSec, fromTs);
+
+      if (fromTs > nowSec) {
+        attacksMap = {};
+        recalculate();
+        return setStatus(
+          `Synced ${Object.keys(membersMap).length} members. Selected war hasn't started yet (${formatTctDate(fromTs)})—pick a completed war in the dropdown to load hits.`,
+          "ok"
+        );
+      }
+
+      let cursorFrom = fromTs;
+      let pagesFetched = 0;
+      const maxPages = 30;
+      const incomingAttacks = {};
+
+      for (let page = 0; page < maxPages; page++) {
+        if (cursorFrom > toTs) break;
+        setStatus(`Fetching attacks for ${formatTctDate(fromTs)} (page ${page + 1}, ${Object.keys(incomingAttacks).length} loaded)...`);
+
+        const atkRes = await fetch(
+          `https://api.torn.com/faction/?selections=attacks&from=${cursorFrom}&to=${toTs}&key=${encodeURIComponent(key)}`
+        );
+        const atkData = await atkRes.json();
+        if (atkData.error) {
+          recalculate();
+          return setStatus(`Torn API Error (${atkData.error.code}): ${atkData.error.error}`, "err");
+        }
+
+        const batch = atkData.attacks || {};
+        const entries = Object.entries(batch);
+        pagesFetched += 1;
+        if (entries.length === 0) break;
+
+        let newInBatch = 0;
+        let newestTs = 0;
+        for (const [atkId, a] of entries) {
+          if (!incomingAttacks[atkId]) newInBatch += 1;
+          incomingAttacks[atkId] = a;
+          const t = Number(a.timestamp_ended || a.timestamp_started || 0);
+          if (t > newestTs) newestTs = t;
+        }
+
+        if (entries.length < 100 || newInBatch === 0 || newestTs <= cursorFrom || newestTs >= toTs) {
+          break;
+        }
+        cursorFrom = newestTs + 1;
+      }
+
+      attacksMap = incomingAttacks;
+
+      if (db && fromTs) {
+        if (Object.keys(incomingAttacks).length > 0) {
+          await db.ref(`wars/${fromTs}/attacks`).update(incomingAttacks);
+        }
+        const snap = await db.ref(`wars/${fromTs}/attacks`).once("value");
+        if (snap.exists()) attacksMap = snap.val();
+        await refreshSavedWarsList();
+        document.getElementById("savedWarSelect").value = String(fromTs);
+      }
+
+      const allAtks = Object.values(attacksMap);
+      const myHitsCount = allAtks.filter(a => Number(a.attacker_faction) === detectedFactionId).length;
+      const enemyId = Number(document.getElementById("enemyFactionId").value) || 0;
+      const warWinsCount = allAtks.filter(
+        a => Number(a.attacker_faction) === detectedFactionId &&
+             Number(a.defender_faction) === enemyId &&
+             WIN_RESULTS.has(a.result)
+      ).length;
+
+      recalculate();
+      setStatus(
+        `Synced ${Object.keys(membersMap).length} members & ${allAtks.length} total attacks (${pagesFetched} page(s)) — ${myHitsCount} outgoing by [${detectedFactionId}], ${warWinsCount} war wins vs [${enemyId}].`,
+        "ok"
+      );
+    } catch (err) {
+      setStatus(`Error while syncing: ${err.message}`, "err");
+    }
+  }
+
+  function classifyHits() {
+    const startTs = Number(document.getElementById("warStart").value) || 0;
+    const endTs = Number(document.getElementById("warEnd").value) || Infinity;
+    const myFactionId = Number(document.getElementById("myFactionId").value) || 0;
+    const enemyId = Number(document.getElementById("enemyFactionId").value) || 0;
+
+    const validWins = Object.values(attacksMap)
+      .filter(a => {
+        if (!a) return false;
+        const matchesFaction = myFactionId ? Number(a.attacker_faction) === myFactionId : true;
+        const endTime = Number(a.timestamp_ended || a.timestamp_started || 0);
+        return matchesFaction && WIN_RESULTS.has(a.result) && endTime >= startTs && endTime <= endTs;
+      })
+      .sort((a, b) => Number(a.timestamp_ended || 0) - Number(b.timestamp_ended || 0));
+
+    const runs = [];
+    let currentRun = [];
+
+    for (const atk of validWins) {
+      const t = Number(atk.timestamp_ended || atk.timestamp_started || 0);
+      if (currentRun.length === 0) {
+        currentRun.push({ ...atk, _t: t });
+      } else {
+        const prevT = currentRun[currentRun.length - 1]._t;
+        if (t - prevT <= 300) {
+          currentRun.push({ ...atk, _t: t });
+        } else {
+          runs.push(currentRun);
+          currentRun = [{ ...atk, _t: t }];
+        }
+      }
+    }
+    if (currentRun.length > 0) runs.push(currentRun);
+
+    const stats = {};
+    for (const id of Object.keys(membersMap)) {
+      stats[id] = { warHits: 0, warRespect: 0, chainOutsideHits: 0, ignoredOutsideHits: 0, qualifyingSequence: [] };
+    }
+
+    for (const run of runs) {
+      const isChain = run.length >= 10;
+      for (const atk of run) {
+        const uid = String(atk.attacker_id);
+        if (!stats[uid]) {
+          membersMap[uid] = {
+            id: uid,
+            name: atk.attacker_name || `ID ${uid}`,
+            salaried: false,
+            excluded: false,
+            hitLimited: false,
+            payLimited: false
+          };
+          stats[uid] = { warHits: 0, warRespect: 0, chainOutsideHits: 0, ignoredOutsideHits: 0, qualifyingSequence: [] };
+        }
+
+        const isWarTarget = enemyId && Number(atk.defender_faction) === enemyId;
+        if (isWarTarget) {
+          const resp = Number(atk.respect ?? atk.respect_gain ?? 0);
+          stats[uid].warHits += 1;
+          stats[uid].warRespect += resp;
+          stats[uid].qualifyingSequence.push({ type: "war", respect: resp });
+        } else if (isChain) {
+          stats[uid].chainOutsideHits += 1;
+          stats[uid].qualifyingSequence.push({ type: "outsideChain", respect: 0 });
+        } else {
+          stats[uid].ignoredOutsideHits += 1;
+        }
+      }
+    }
+
+    return stats;
+  }
+
+  function distributeWithCap(items, totalPool, weightKey, capFlagKey, payoutCap) {
+    const payouts = new Array(items.length).fill(0);
+    if (totalPool <= 0 || items.length === 0) return payouts;
+
+    const active = new Set();
+    for (let i = 0; i < items.length; i++) {
+      if ((Number(items[i][weightKey]) || 0) > 0) active.add(i);
+    }
+
+    let remainingBudget = totalPool;
+    const hasCap = payoutCap > 0;
+
+    while (active.size > 0 && remainingBudget > 0) {
+      let weightSum = 0;
+      for (const idx of active) {
+        weightSum += Number(items[idx][weightKey]) || 0;
+      }
+      if (weightSum <= 0) break;
+
+      let cappedAny = false;
+      for (const idx of Array.from(active)) {
+        const w = Number(items[idx][weightKey]) || 0;
+        const share = remainingBudget * (w / weightSum);
+        if (hasCap && items[idx][capFlagKey] && share >= payoutCap) {
+          payouts[idx] = Math.floor(payoutCap);
+          remainingBudget = Math.max(0, remainingBudget - payouts[idx]);
+          active.delete(idx);
+          cappedAny = true;
+        }
+      }
+
+      if (!cappedAny) {
+        for (const idx of active) {
+          const w = Number(items[idx][weightKey]) || 0;
+          payouts[idx] = Math.floor(remainingBudget * (w / weightSum));
+        }
+        break;
+      }
+    }
+
+    return payouts;
+  }
+
+  function recalculate() {
+    const sellAmount = Math.max(0, Number(document.getElementById("sellAmount").value) || 0);
+    const sellTaxPct = Math.max(0, Number(document.getElementById("sellTaxPct").value) || 0);
+    const factionCutPct = Math.max(0, Number(document.getElementById("factionCutPct").value) || 0);
+    const salariedPct = Math.max(0, Number(document.getElementById("salariedPct").value) || 0);
+    const outsideHitRespect = Math.max(0, Number(document.getElementById("outsideHitRespect").value) || 0);
+    const salariedEarnHits = document.getElementById("salariedEarnHits").value === "yes";
+    const hitLimit = Math.max(0, Math.floor(Number(document.getElementById("hitLimit").value) || 0));
+    const payoutLimit = Math.max(0, Number(document.getElementById("payoutLimit").value) || 0);
+
+    const netAfterTax = sellAmount * (1 - sellTaxPct / 100);
+    const baseFactionCut = netAfterTax * (factionCutPct / 100);
+    const distributable = netAfterTax - baseFactionCut;
+
+    const salariedMembers = Object.values(membersMap).filter(m => m.salaried && !m.excluded);
+    const salariedPool = salariedMembers.length > 0 ? distributable * (salariedPct / 100) : 0;
+    const remainingPool = distributable - salariedPool;
+
+    const hitStats = classifyHits();
+
+    let totalWeightedRespect = 0;
+    let totalHitsMade = 0;
+
+    const rows = Object.values(membersMap).map(m => {
+      const s = hitStats[m.id] || {
+        warHits: 0,
+        warRespect: 0,
+        chainOutsideHits: 0,
+        ignoredOutsideHits: 0,
+        qualifyingSequence: []
+      };
+
+      const rawHitsMade = s.warHits + s.chainOutsideHits;
+      const isHitCapped = m.hitLimited && hitLimit > 0 && rawHitsMade > hitLimit;
+      const countedSeq = isHitCapped ? s.qualifyingSequence.slice(0, hitLimit) : s.qualifyingSequence;
+
+      let countedWeightedRespect = 0;
+      for (const item of countedSeq) {
+        if (item.type === "war") countedWeightedRespect += item.respect;
+        else countedWeightedRespect += outsideHitRespect;
+      }
+      const countedHitsMade = countedSeq.length;
+
+      const isPayable = !m.excluded && (!m.salaried || salariedEarnHits);
+      const eligibleRespect = isPayable ? countedWeightedRespect : 0;
+      const eligibleHits = isPayable ? countedHitsMade : 0;
+
+      totalWeightedRespect += eligibleRespect;
+      totalHitsMade += eligibleHits;
+
+      return {
+        ...m,
+        ...s,
+        rawHitsMade,
+        countedHitsMade,
+        isHitCapped,
+        weightedRespect: countedWeightedRespect,
+        eligibleRespect,
+        eligibleHits
+      };
+    });
+
+    const respectPayouts = distributeWithCap(rows, remainingPool, "eligibleRespect", "payLimited", payoutLimit);
+    const hitPayouts = distributeWithCap(rows, netAfterTax, "eligibleHits", "payLimited", payoutLimit);
+
+    const salaryPerPerson = salariedMembers.length > 0 ? Math.floor(salariedPool / salariedMembers.length) : 0;
+
+    let totalDistributed = 0;
+    latestRows = rows.map((r, idx) => {
+      if (r.excluded) {
+        return { ...r, salaryPay: 0, respectPay: 0, hitPay: 0, isRespectPayCapped: false, isHitPayCapped: false };
+      }
+      const salaryPay = r.salaried ? salaryPerPerson : 0;
+      const respectPay = respectPayouts[idx] || 0;
+      const hitPay = hitPayouts[idx] || 0;
+      const isRespectPayCapped = r.payLimited && payoutLimit > 0 && respectPay >= Math.floor(payoutLimit);
+      const isHitPayCapped = r.payLimited && payoutLimit > 0 && hitPay >= Math.floor(payoutLimit);
+      totalDistributed += salaryPay + respectPay;
+      return { ...r, salaryPay, respectPay, hitPay, isRespectPayCapped, isHitPayCapped };
+    });
+
+    sortLatestRows();
+
+    const finalFactionCut = Math.max(0, Math.floor(netAfterTax - totalDistributed));
+
+    document.getElementById("netAfterTax").textContent = formatMoney(Math.floor(netAfterTax));
+    document.getElementById("factionCutAmt").textContent = formatMoney(finalFactionCut);
+    document.getElementById("salariedPoolAmt").textContent = formatMoney(salaryPerPerson * salariedMembers.length);
+    document.getElementById("hitPoolAmt").textContent = formatMoney(Math.floor(remainingPool));
+    document.getElementById("totalRespect").textContent = totalWeightedRespect.toFixed(2);
+    document.getElementById("totalQualifyingHits").textContent = totalHitsMade.toLocaleString("en-US");
+
+    renderTableHeaders();
+    renderTable();
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById("memberTableBody");
+    if (latestRows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; color:var(--muted); padding:16px;">No members loaded yet. Sync from Torn or select a saved war.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = latestRows.map(r => `
+      <tr class="${r.excluded ? "excluded-row" : ""}">
+        <td><input type="checkbox" name="salaried_${escapeHtml(r.id)}" ${r.salaried ? "checked" : ""} onchange="toggleMemberFlag('${escapeHtml(r.id)}', 'salaried', this.checked)" /></td>
+        <td><input type="checkbox" name="excluded_${escapeHtml(r.id)}" ${r.excluded ? "checked" : ""} onchange="toggleMemberFlag('${escapeHtml(r.id)}', 'excluded', this.checked)" /></td>
+        <td><input type="checkbox" name="hitLimited_${escapeHtml(r.id)}" ${r.hitLimited ? "checked" : ""} onchange="toggleMemberFlag('${escapeHtml(r.id)}', 'hitLimited', this.checked)" /></td>
+        <td><input type="checkbox" name="payLimited_${escapeHtml(r.id)}" ${r.payLimited ? "checked" : ""} onchange="toggleMemberFlag('${escapeHtml(r.id)}', 'payLimited', this.checked)" /></td>
+        <td>${escapeHtml(r.name)} [${escapeHtml(r.id)}]</td>
+        <td>${r.warHits}${r.isHitCapped ? `<span class="cap-badge" title="Counted ${r.countedHitsMade} of ${r.rawHitsMade} qualifying hits">(${r.countedHitsMade})</span>` : ""}</td>
+        <td>${r.warRespect.toFixed(2)}</td>
+        <td>${r.chainOutsideHits}</td>
+        <td style="color: var(--muted)">${r.ignoredOutsideHits}</td>
+        <td><strong>${r.weightedRespect.toFixed(2)}</strong></td>
+        <td>${formatMoney(r.salaryPay)}</td>
+        <td style="color: var(--green); font-weight: 700;">${formatMoney(r.respectPay)}${r.isRespectPayCapped ? `<span class="cap-badge" title="Capped at Max Payout Limit">MAX</span>` : ""}</td>
+        <td style="color: var(--amber); font-weight: 700;">${formatMoney(r.hitPay)}${r.isHitPayCapped ? `<span class="cap-badge" title="Capped at Max Payout Limit">MAX</span>` : ""}</td>
+      </tr>
+    `).join("");
+  }
+
+  function toggleMemberFlag(id, flag, checked) {
+    if (membersMap[id]) {
+      membersMap[id][flag] = checked;
+      recalculate();
+    }
+  }
+
+  async function saveWarToFirebase() {
+    if (!db) return setStatus("Firebase DB is not connected.", "err");
+    const warKey = document.getElementById("warStart").value.trim() || "manual";
+    const warSelect = document.getElementById("rankedWarSelect");
+    const selectedLabel = warSelect.options[warSelect.selectedIndex]?.textContent || "";
+    const vsMatch = selectedLabel.match(/vs\s+(.+?)\s+\(/);
+
+    try {
+      await db.ref(`wars/${warKey}`).update({
+        members: membersMap,
+        payoutConfig: {
+          warStart: Number(document.getElementById("warStart").value) || 0,
+          warEnd: Number(document.getElementById("warEnd").value) || 0,
+          myFactionId: Number(document.getElementById("myFactionId").value) || 0,
+          enemyFactionId: Number(document.getElementById("enemyFactionId").value) || 0,
+          enemyName: vsMatch ? vsMatch[1] : "",
+          sellAmount: Number(document.getElementById("sellAmount").value) || 0,
+          sellTaxPct: Number(document.getElementById("sellTaxPct").value) || 0,
+          factionCutPct: Number(document.getElementById("factionCutPct").value) || 0,
+          salariedPct: Number(document.getElementById("salariedPct").value) || 0,
+          outsideHitRespect: Number(document.getElementById("outsideHitRespect").value) || 0,
+          salariedEarnHits: document.getElementById("salariedEarnHits").value,
+          hitLimit: Math.max(0, Math.floor(Number(document.getElementById("hitLimit").value) || 0)),
+          payoutLimit: Math.max(0, Number(document.getElementById("payoutLimit").value) || 0),
+          salariedIds: Object.values(membersMap).filter(m => m.salaried).map(m => m.id),
+          excludedIds: Object.values(membersMap).filter(m => m.excluded).map(m => m.id),
+          hitLimitedIds: Object.values(membersMap).filter(m => m.hitLimited).map(m => m.id),
+          payLimitedIds: Object.values(membersMap).filter(m => m.payLimited).map(m => m.id),
+          savedAt: Date.now()
+        }
+      });
+      await refreshSavedWarsList();
+      document.getElementById("savedWarSelect").value = warKey;
+      setStatus("Saved war roster, flags, limits, and payout settings to Firebase (API key excluded).", "ok");
+    } catch (err) {
+      setStatus(`Failed to save war: ${err.message}`, "err");
+    }
+  }
+
+  function copyPayoutList() {
+    const lines = latestRows
+      .filter(r => !r.excluded && (r.salaryPay > 0 || r.respectPay > 0))
+      .map(r => `${r.name} [${r.id}] - ${formatMoney(r.salaryPay + r.respectPay)}`);
+    if (lines.length === 0) return setStatus("No payouts above $0 to copy.", "err");
+    navigator.clipboard.writeText(lines.join("\n"));
+    setStatus(`Copied ${lines.length} member payouts to clipboard.`, "ok");
+  }
+
+  function formatMoney(n) {
+    return "$" + Number(n || 0).toLocaleString("en-US");
+  }
+
+  function setStatus(msg, type = "") {
+    const el = document.getElementById("status");
+    if (!el) return;
+    el.textContent = msg;
+    el.className = "status" + (type ? ` ${type}` : "");
+  }
+
+  loadLocalApiKey();
+  renderTableHeaders();
+  recalculate();
+  if (db) {
+    refreshSavedWarsList().then(() => {
+      setStatus("Connected to RazersAllianceWarPayout DB. Enter your Torn API key and click Sync.", "ok");
+    });
+  } else {
+    setStatus("Running in local/Torn mode (Firebase SDK unavailable—check browser console).", "err");
+  }
+</script>
+</body>
+</html>
