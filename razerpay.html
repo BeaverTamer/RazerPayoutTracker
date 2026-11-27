@@ -115,8 +115,10 @@
     th:hover { color: var(--text); background: #19202e; }
     .sort-arrow { font-size: 0.62rem; margin-left: 1px; opacity: 0.75; }
     th.sorted { color: var(--text); }
-    tr:hover { background: #1e2533; }
-    tr.excluded-row { opacity: 0.52; }
+    tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.024); }
+    tbody tr:hover { background: rgba(59, 130, 246, 0.11); }
+    tbody tr.excluded-row { background: rgba(239, 68, 68, 0.04); opacity: 0.52; }
+    tbody tr.excluded-row:hover { background: rgba(239, 68, 68, 0.08); }
     input[type="checkbox"] {
       width: 14px;
       height: 14px;
@@ -145,8 +147,8 @@
   <div class="card">
     <div class="grid">
       <div>
-        <label for="apiKey">Torn API Key (Limited + Faction AA)</label>
-        <input type="password" id="apiKey" name="apiKey" placeholder="Enter Torn API Key" />
+        <label for="apiKey">Torn API Key (Saved Locally Only)</label>
+        <input type="password" id="apiKey" name="apiKey" autocomplete="off" placeholder="Enter Torn API Key" oninput="persistLocalApiKey()" />
       </div>
       <div>
         <label for="rankedWarSelect">Ranked War (From Torn)</label>
@@ -258,6 +260,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script>
+  const LOCAL_API_KEY_STORAGE = "razers_war_payout_api_key";
+
   const firebaseConfig = {
     apiKey: "AIzaSyC1B6-tReQgkuST7sQW0erUZMpWCQTEhFE",
     authDomain: "razersalliancewarpayout.firebaseapp.com",
@@ -275,6 +279,30 @@
       db = app.database();
     } catch (err) {
       console.error("Firebase init error:", err);
+    }
+  }
+
+  function loadLocalApiKey() {
+    try {
+      const saved = localStorage.getItem(LOCAL_API_KEY_STORAGE);
+      if (saved) {
+        document.getElementById("apiKey").value = saved;
+      }
+    } catch (_) {
+      // Ignore storage access restrictions
+    }
+  }
+
+  function persistLocalApiKey() {
+    try {
+      const val = document.getElementById("apiKey").value.trim();
+      if (val) {
+        localStorage.setItem(LOCAL_API_KEY_STORAGE, val);
+      } else {
+        localStorage.removeItem(LOCAL_API_KEY_STORAGE);
+      }
+    } catch (_) {
+      // Ignore storage access restrictions
     }
   }
 
@@ -460,6 +488,7 @@
   async function syncTornData(keepSelectedWar = false) {
     const key = document.getElementById("apiKey").value.trim();
     if (!key) return setStatus("Please enter a Torn API key first.", "err");
+    persistLocalApiKey();
 
     setStatus("Fetching faction roster and ranked wars from Torn...");
     try {
@@ -803,7 +832,7 @@
       });
       await refreshSavedWarsList();
       document.getElementById("savedWarSelect").value = warKey;
-      setStatus("Saved war roster, salaried/excluded flags, and payout settings to Firebase.", "ok");
+      setStatus("Saved war roster, salaried/excluded flags, and payout settings to Firebase (API key excluded).", "ok");
     } catch (err) {
       setStatus(`Failed to save war: ${err.message}`, "err");
     }
@@ -829,6 +858,7 @@
     el.className = "status" + (type ? ` ${type}` : "");
   }
 
+  loadLocalApiKey();
   renderTableHeaders();
   recalculate();
   if (db) {
