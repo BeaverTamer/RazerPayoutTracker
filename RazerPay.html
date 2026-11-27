@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Faction War Payout Calculator</title>
+  <style>
+    :root {
+      --bg: #0f131a;
+      --card: #181e29;
+      --border: #2a3344;
+      --text: #e6ecf5;
+      --muted: #8b9bb4;
+      --accent: #3b82f6;
+      --green: #10b981;
+      --amber: #f59e0b;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; padding: 20px; background: var(--bg); color: var(--text); }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { margin: 0 0 16px; font-size: 1.5rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 4px; }
+    input, select, button {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #0d1117;
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+    button {
+      background: var(--accent);
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { opacity: 0.9; }
+    button.secondary { background: #263042; }
+    button.green { background: var(--green); color: #062419; }
+    .summary-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .stat-box { background: #111620; padding: 10px; border-radius: 8px; }
+    .stat-box span { display: block; font-size: 0.75rem; color: var(--muted); }
+    .stat-box strong { font-size: 1.05rem; color: var(--green); }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.88rem; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: right; }
+    th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+    th { color: var(--muted); font-weight: 600; background: #131822; }
+    tr:hover { background: #1e2533; }
+    input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+    .status { font-size: 0.82rem; color: var(--amber); margin-top: 8px; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Faction War Payout Calculator</h1>
+
+  <!-- 1. API & War Sync -->
+  <div class="card">
+    <div class="grid">
+      <div>
+        <label>Torn API Key (Faction AA)</label>
+        <input type="password" id="apiKey" placeholder="Enter API Key" />
+      </div>
+      <div>
+        <label>War Start (UNIX)</label>
+        <input type="number" id="warStart" placeholder="e.g. 1732600000" />
+      </div>
+      <div>
+        <label>War End (UNIX)</label>
+        <input type="number" id="warEnd" placeholder="e.g. 1732772800" />
+      </div>
+      <div>
+        <label>Enemy Faction ID</label>
+        <input type="number" id="enemyFactionId" placeholder="e.g. 12345" />
+      </div>
+      <div style="display:flex; align-items:flex-end; gap:8px;">
+        <button onclick="syncTornData()">Sync War & Attacks</button>
+      </div>
+    </div>
+    <div id="status" class="status">Ready. Enter your API key and click Sync (or load saved war data from Firebase).</div>
+  </div>
+
+  <!-- 2. Payout Settings -->
+  <div class="card">
+    <div class="grid">
+      <div>
+        <label>Cache Gross Sell Amount ($)</label>
+        <input type="number" id="sellAmount" value="500000000" oninput="recalculate()" />
+      </div>
+      <div>
+        <label>Sell Tax (%)</label>
+        <input type="number" id="sellTaxPct" value="5" step="0.1" oninput="recalculate()" />
+      </div>
+      <div>
+        <label>Faction Cut (%)</label>
+        <input type="number" id="factionCutPct" value="10" step="0.1" oninput="recalculate()" />
+      </div>
+      <div>
+        <label>Salaried Pool (%)</label>
+        <input type="number" id="salariedPct" value="15" step="0.1" oninput="recalculate()" />
+      </div>
+      <div>
+        <label>Non-War Chain Hit Respect</label>
+        <input type="number" id="outsideHitRespect" value="2.5" step="0.1" oninput="recalculate()" />
+      </div>
+      <div>
+        <label>Salaried Also Earn Hit Pay?</label>
+        <select id="salariedEarnHits" onchange="recalculate()">
+          <option value="yes">Yes (Salary + Hits)</option>
+          <option value="no">No (Salary Only)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="summary-bar">
+      <div class="stat-box"><span>Net After Tax</span><strong id="netAfterTax">$0</strong></div>
+      <div class="stat-box"><span>Faction Cut ($)</span><strong id="factionCutAmt">$0</strong></div>
+      <div class="stat-box"><span>Salaried Pool ($)</span><strong id="salariedPoolAmt">$0</strong></div>
+      <div class="stat-box"><span>Hit/Respect Pool ($)</span><strong id="hitPoolAmt">$0</strong></div>
+      <div class="stat-box"><span>Total Weighted Respect</span><strong id="totalRespect">0.00</strong></div>
+    </div>
+  </div>
+
+  <!-- 3. Member Payout Table -->
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <strong>Member Breakdown</strong>
+      <div style="display:flex; gap:8px; width:auto;">
+        <button class="secondary" style="width:auto;" onclick="saveConfigToFirebase()">Save War to DB</button>
+        <button class="green" style="width:auto;" onclick="copyPayoutList()">Copy Payout List</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Salaried</th>
+            <th>Member</th>
+            <th>War Hits</th>
+            <th>War Respect</th>
+            <th>10+ Chain Outside Hits</th>
+            <th>Ignored Outside (&lt;10)</th>
+            <th>Total Weighted Respect</th>
+            <th>Salary Pay</th>
+            <th>Hit Pay</th>
+            <th>Total Payout</th>
+          </tr>
+        </thead>
+        <tbody id="memberTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase Compat SDK (swap config with your 2nd Firebase project) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+  // REPLACE WITH YOUR SECOND FIREBASE PROJECT CONFIG
+  const firebaseConfig = {
+    apiKey: "YOUR_FIREBASE_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+    projectId: "YOUR_PROJECT"
+  };
+
+  let db = null;
+  if (firebaseConfig.apiKey !== "YOUR_FIREBASE_API_KEY") {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+  }
+
+  let factionId = null;
+  let membersMap = {};      // { [userId]: { id, name, salaried: false } }
+  let attacksMap = {};      // { [attackId]: attackObj }
+  let latestRows = [];
+
+  const WIN_RESULTS = new Set(["Attacked", "Mugged", "Hospitalized"]);
+
+  async function syncTornData() {
+    const key = document.getElementById("apiKey").value.trim();
+    if (!key) return setStatus("Please enter a Torn API key.");
+
+    setStatus("Fetching faction roster and ranked war details...");
+    try {
+      const baseRes = await fetch(`https://api.torn.com/faction/?selections=basic,rankedwars&key=${key}`);
+      const baseData = await baseRes.json();
+      if (baseData.error) return setStatus(`Torn API Error: ${baseData.error.error}`);
+
+      factionId = baseData.ID;
+
+      // Populate members while preserving any checked salaried toggles
+      for (const [id, info] of Object.entries(baseData.members || {})) {
+        membersMap[id] = {
+          id,
+          name: info.name,
+          salaried: membersMap[id]?.salaried || false
+        };
+      }
+
+      // Auto-fill latest ranked war if inputs are blank
+      const wars = Object.values(baseData.rankedwars || {});
+      if (wars.length > 0 && !document.getElementById("warStart").value) {
+        const latestWar = wars[wars.length - 1];
+        document.getElementById("warStart").value = latestWar.war.start;
+        document.getElementById("warEnd").value = latestWar.war.end || Math.floor(Date.now() / 1000);
+        const enemyId = Object.keys(latestWar.factions).find(fid => Number(fid) !== Number(factionId));
+        if (enemyId) document.getElementById("enemyFactionId").value = enemyId;
+      }
+
+      const fromTs = Number(document.getElementById("warStart").value);
+      const toTs = Number(document.getElementById("warEnd").value) || Math.floor(Date.now() / 1000);
+
+      setStatus("Fetching faction attacks...");
+      const atkRes = await fetch(`https://api.torn.com/faction/?selections=attacks&from=${fromTs}&to=${toTs}&key=${key}`);
+      const atkData = await atkRes.json();
+      if (atkData.error) return setStatus(`Torn API Error: ${atkData.error.error}`);
+
+      // Merge into local & Firebase attack cache so historical attacks never get lost
+      const newAttacks = atkData.attacks || {};
+      Object.assign(attacksMap, newAttacks);
+
+      if (db && fromTs) {
+        await db.ref(`wars/${fromTs}/attacks`).update(newAttacks);
+        const snap = await db.ref(`wars/${fromTs}/attacks`).once("value");
+        attacksMap = snap.val() || attacksMap;
+      }
+
+      setStatus(`Synced ${Object.keys(membersMap).length} members and ${Object.keys(attacksMap).length} stored attacks.`);
+      recalculate();
+    } catch (err) {
+      setStatus(`Request failed: ${err.message}`);
+    }
+  }
+
+  function classifyHits() {
+    const startTs = Number(document.getElementById("warStart").value) || 0;
+    const endTs = Number(document.getElementById("warEnd").value) || Infinity;
+    const enemyId = Number(document.getElementById("enemyFactionId").value);
+
+    // 1. Filter winning attacks by our faction inside the war window
+    const validWins = Object.values(attacksMap)
+      .filter(a =>
+        Number(a.attacker_faction) === Number(factionId) &&
+        WIN_RESULTS.has(a.result) &&
+        a.timestamp_ended >= startTs &&
+        a.timestamp_ended <= endTs
+      )
+      .sort((a, b) => a.timestamp_ended - b.timestamp_ended);
+
+    // 2. Group into contiguous chain runs (<= 300s between consecutive winning hits)
+    const runs = [];
+    let currentRun = [];
+
+    for (const atk of validWins) {
+      if (currentRun.length === 0) {
+        currentRun.push(atk);
+      } else {
+        const prev = currentRun[currentRun.length - 1];
+        if (atk.timestamp_ended - prev.timestamp_ended <= 300) {
+          currentRun.push(atk);
+        } else {
+          runs.push(currentRun);
+          currentRun = [atk];
+        }
+      }
+    }
+    if (currentRun.length > 0) runs.push(currentRun);
+
+    // 3. Tally per member
+    const stats = {};
+    for (const id of Object.keys(membersMap)) {
+      stats[id] = { warHits: 0, warRespect: 0, chainOutsideHits: 0, ignoredOutsideHits: 0 };
+    }
+
+    for (const run of runs) {
+      const isChain = run.length >= 10;
+      for (const atk of run) {
+        const uid = String(atk.attacker_id);
+        if (!stats[uid]) {
+          membersMap[uid] = { id: uid, name: atk.attacker_name || `ID ${uid}`, salaried: false };
+          stats[uid] = { warHits: 0, warRespect: 0, chainOutsideHits: 0, ignoredOutsideHits: 0 };
+        }
+
+        const isWarTarget = enemyId && Number(atk.defender_faction) === enemyId;
+        if (isWarTarget) {
+          stats[uid].warHits += 1;
+          stats[uid].warRespect += Number(atk.respect || atk.respect_gain || 0);
+        } else if (isChain) {
+          stats[uid].chainOutsideHits += 1;
+        } else {
+          stats[uid].ignoredOutsideHits += 1;
+        }
+      }
+    }
+
+    return stats;
+  }
+
+  function recalculate() {
+    const sellAmount = Math.max(0, Number(document.getElementById("sellAmount").value) || 0);
+    const sellTaxPct = Math.max(0, Number(document.getElementById("sellTaxPct").value) || 0);
+    const factionCutPct = Math.max(0, Number(document.getElementById("factionCutPct").value) || 0);
+    const salariedPct = Math.max(0, Number(document.getElementById("salariedPct").value) || 0);
+    const outsideHitRespect = Math.max(0, Number(document.getElementById("outsideHitRespect").value) || 0);
+    const salariedEarnHits = document.getElementById("salariedEarnHits").value === "yes";
+
+    const netAfterTax = sellAmount * (1 - sellTaxPct / 100);
+    const baseFactionCut = netAfterTax * (factionCutPct / 100);
+    const distributable = netAfterTax - baseFactionCut;
+
+    const salariedMembers = Object.values(membersMap).filter(m => m.salaried);
+    const salariedPool = salariedMembers.length > 0 ? distributable * (salariedPct / 100) : 0;
+    const hitPool = distributable - salariedPool;
+
+    const hitStats = classifyHits();
+
+    let totalWeightedRespect = 0;
+    const rows = Object.values(membersMap).map(m => {
+      const s = hitStats[m.id] || { warHits: 0, warRespect: 0, chainOutsideHits: 0, ignoredOutsideHits: 0 };
+      const rawWeightedRespect = s.warRespect + (s.chainOutsideHits * outsideHitRespect);
+      const eligibleRespect = (!m.salaried || salariedEarnHits) ? rawWeightedRespect : 0;
+      totalWeightedRespect += eligibleRespect;
+      return { ...m, ...s, weightedRespect: rawWeightedRespect, eligibleRespect };
+    });
+
+    const salaryPerPerson = salariedMembers.length > 0 ? Math.floor(salariedPool / salariedMembers.length) : 0;
+
+    let totalDistributed = 0;
+    latestRows = rows
+      .map(r => {
+        const salaryPay = r.salaried ? salaryPerPerson : 0;
+        const hitPay = totalWeightedRespect > 0
+          ? Math.floor(hitPool * (r.eligibleRespect / totalWeightedRespect))
+          : 0;
+        const totalPay = salaryPay + hitPay;
+        totalDistributed += totalPay;
+        return { ...r, salaryPay, hitPay, totalPay };
+      })
+      .sort((a, b) => b.totalPay - a.totalPay || b.weightedRespect - a.weightedRespect);
+
+    const finalFactionCut = Math.floor(netAfterTax - totalDistributed);
+
+    document.getElementById("netAfterTax").textContent = formatMoney(Math.floor(netAfterTax));
+    document.getElementById("factionCutAmt").textContent = formatMoney(finalFactionCut);
+    document.getElementById("salariedPoolAmt").textContent = formatMoney(salaryPerPerson * salariedMembers.length);
+    document.getElementById("hitPoolAmt").textContent = formatMoney(Math.floor(hitPool));
+    document.getElementById("totalRespect").textContent = totalWeightedRespect.toFixed(2);
+
+    renderTable();
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById("memberTableBody");
+    tbody.innerHTML = latestRows.map(r => `
+      <tr>
+        <td><input type="checkbox" ${r.salaried ? "checked" : ""} onchange="toggleSalaried('${r.id}', this.checked)" /></td>
+        <td>${r.name} [${r.id}]</td>
+        <td>${r.warHits}</td>
+        <td>${r.warRespect.toFixed(2)}</td>
+        <td>${r.chainOutsideHits}</td>
+        <td style="color: var(--muted)">${r.ignoredOutsideHits}</td>
+        <td><strong>${r.weightedRespect.toFixed(2)}</strong></td>
+        <td>${formatMoney(r.salaryPay)}</td>
+        <td>${formatMoney(r.hitPay)}</td>
+        <td style="color: var(--green); font-weight: 700;">${formatMoney(r.totalPay)}</td>
+      </tr>
+    `).join("");
+  }
+
+  function toggleSalaried(id, checked) {
+    if (membersMap[id]) {
+      membersMap[id].salaried = checked;
+      recalculate();
+    }
+  }
+
+  async function saveConfigToFirebase() {
+    if (!db) return setStatus("Add your Firebase config at the top of the script to save to DB.");
+    const warStart = document.getElementById("warStart").value || "manual";
+    await db.ref(`wars/${warStart}/payoutConfig`).set({
+      sellAmount: Number(document.getElementById("sellAmount").value),
+      sellTaxPct: Number(document.getElementById("sellTaxPct").value),
+      factionCutPct: Number(document.getElementById("factionCutPct").value),
+      salariedPct: Number(document.getElementById("salariedPct").value),
+      outsideHitRespect: Number(document.getElementById("outsideHitRespect").value),
+      salariedIds: Object.values(membersMap).filter(m => m.salaried).map(m => m.id),
+      savedAt: Date.now()
+    });
+    setStatus("Saved war payout settings and salaried roster to Firebase.");
+  }
+
+  function copyPayoutList() {
+    const lines = latestRows
+      .filter(r => r.totalPay > 0)
+      .map(r => `${r.name} [${r.id}] - ${formatMoney(r.totalPay)}`);
+    navigator.clipboard.writeText(lines.join("\n"));
+    setStatus(`Copied ${lines.length} member payouts to clipboard.`);
+  }
+
+  function formatMoney(n) {
+    return "$" + Number(n || 0).toLocaleString("en-US");
+  }
+
+  function setStatus(msg) {
+    document.getElementById("status").textContent = msg;
+  }
+</script>
+</body>
+</html>
