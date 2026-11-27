@@ -30,18 +30,33 @@
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
       gap: 10px;
+      align-items: stretch;
     }
-    label { display: block; font-size: 0.76rem; color: var(--muted); margin-bottom: 4px; }
+    .grid > div {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      min-width: 0;
+    }
+    label {
+      display: block;
+      font-size: 0.76rem;
+      line-height: 1.25;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
     input, select, button {
       width: 100%;
+      height: 36px;
       padding: 7px 9px;
       border-radius: 6px;
       border: 1px solid var(--border);
       background: #0d1117;
       color: var(--text);
       font-size: 0.88rem;
+      margin-top: auto;
     }
     button {
       background: var(--accent);
@@ -66,14 +81,23 @@
     summary:hover { color: var(--text); }
     .summary-bar {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 8px;
-      margin-top: 10px;
-      padding-top: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+      padding-top: 12px;
       border-top: 1px solid var(--border);
+      align-items: stretch;
     }
-    .stat-box { background: #111620; padding: 8px 10px; border-radius: 8px; }
-    .stat-box span { display: block; font-size: 0.72rem; color: var(--muted); }
+    .stat-box {
+      background: #111620;
+      padding: 9px 10px;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-width: 0;
+    }
+    .stat-box span { display: block; font-size: 0.72rem; line-height: 1.25; color: var(--muted); margin-bottom: 4px; }
     .stat-box strong { font-size: 0.98rem; color: var(--green); font-variant-numeric: tabular-nums; }
     .table-wrap {
       overflow-x: auto;
@@ -140,8 +164,23 @@
     .status.err { color: var(--red); }
 
     @media (max-width: 640px) {
-      body { padding: 6px; }
-      .card { padding: 8px; }
+      body { padding: 8px; }
+      .card { padding: 10px; }
+      .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .summary-bar {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      label {
+        font-size: 0.73rem;
+      }
+      input, select {
+        font-size: 0.84rem;
+        padding: 6px 8px;
+      }
       table { font-size: 0.72rem; }
       th, td { padding: 4px 2.5px; }
       th:nth-child(5), td:nth-child(5) { padding-right: 6px; }
@@ -724,11 +763,6 @@
     return stats;
   }
 
-  /**
-   * Distributes `totalPool` proportionally by `weightKey` while enforcing `payoutCap`
-   * on items where `capFlagKey` is true. Any unspent excess above a cap redistributes
-   * proportionally to uncapped items.
-   */
   function distributeWithCap(items, totalPool, weightKey, capFlagKey, payoutCap) {
     const payouts = new Array(items.length).fill(0);
     if (totalPool <= 0 || items.length === 0) return payouts;
