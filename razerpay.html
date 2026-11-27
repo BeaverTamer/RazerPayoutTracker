@@ -19,7 +19,7 @@
     }
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
     body { margin: 0; padding: 10px; background: var(--bg); color: var(--text); }
-    .container { max-width: 1420px; margin: 0 auto; }
+    .container { max-width: 1480px; margin: 0 auto; }
     h1 { margin: 0 0 12px; font-size: 1.3rem; }
     .card {
       background: var(--card);
@@ -30,7 +30,7 @@
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
       gap: 10px;
     }
     label { display: block; font-size: 0.76rem; color: var(--muted); margin-bottom: 4px; }
@@ -94,12 +94,14 @@
       font-variant-numeric: tabular-nums;
     }
     th:nth-child(1), td:nth-child(1),
-    th:nth-child(2), td:nth-child(2) {
+    th:nth-child(2), td:nth-child(2),
+    th:nth-child(3), td:nth-child(3),
+    th:nth-child(4), td:nth-child(4) {
       text-align: center;
       padding-left: 3px;
       padding-right: 3px;
     }
-    th:nth-child(3), td:nth-child(3) {
+    th:nth-child(5), td:nth-child(5) {
       text-align: left;
       padding-right: 8px;
     }
@@ -119,6 +121,13 @@
     tbody tr:hover { background: rgba(59, 130, 246, 0.11); }
     tbody tr.excluded-row { background: rgba(239, 68, 68, 0.04); opacity: 0.52; }
     tbody tr.excluded-row:hover { background: rgba(239, 68, 68, 0.08); }
+    .cap-badge {
+      display: inline-block;
+      font-size: 0.66rem;
+      color: var(--amber);
+      margin-left: 2px;
+      font-weight: 600;
+    }
     input[type="checkbox"] {
       width: 14px;
       height: 14px;
@@ -134,8 +143,8 @@
       body { padding: 6px; }
       .card { padding: 8px; }
       table { font-size: 0.72rem; }
-      th, td { padding: 4px 3px; }
-      th:nth-child(3), td:nth-child(3) { padding-right: 6px; }
+      th, td { padding: 4px 2.5px; }
+      th:nth-child(5), td:nth-child(5) { padding-right: 6px; }
     }
   </style>
 </head>
@@ -224,6 +233,14 @@
           <option value="no">No (Salary Only)</option>
         </select>
       </div>
+      <div>
+        <label for="hitLimit">Hit Limit (0 = No Limit)</label>
+        <input type="number" id="hitLimit" name="hitLimit" value="0" min="0" step="1" oninput="recalculate()" />
+      </div>
+      <div>
+        <label for="payoutLimit">Max Payout Limit ($) (0 = No Limit)</label>
+        <input type="number" id="payoutLimit" name="payoutLimit" value="0" min="0" step="1000000" oninput="recalculate()" />
+      </div>
     </div>
 
     <div class="summary-bar">
@@ -232,7 +249,7 @@
       <div class="stat-box"><span>Salaried Pool ($)</span><strong id="salariedPoolAmt">$0</strong></div>
       <div class="stat-box"><span>Remaining Pool ($)</span><strong id="hitPoolAmt">$0</strong></div>
       <div class="stat-box"><span>Weighted Respect</span><strong id="totalRespect">0.00</strong></div>
-      <div class="stat-box"><span>Total Hits Made</span><strong id="totalQualifyingHits">0</strong></div>
+      <div class="stat-box"><span>Counted Hits</span><strong id="totalQualifyingHits">0</strong></div>
     </div>
   </div>
 
@@ -285,25 +302,16 @@
   function loadLocalApiKey() {
     try {
       const saved = localStorage.getItem(LOCAL_API_KEY_STORAGE);
-      if (saved) {
-        document.getElementById("apiKey").value = saved;
-      }
-    } catch (_) {
-      // Ignore storage access restrictions
-    }
+      if (saved) document.getElementById("apiKey").value = saved;
+    } catch (_) {}
   }
 
   function persistLocalApiKey() {
     try {
       const val = document.getElementById("apiKey").value.trim();
-      if (val) {
-        localStorage.setItem(LOCAL_API_KEY_STORAGE, val);
-      } else {
-        localStorage.removeItem(LOCAL_API_KEY_STORAGE);
-      }
-    } catch (_) {
-      // Ignore storage access restrictions
-    }
+      if (val) localStorage.setItem(LOCAL_API_KEY_STORAGE, val);
+      else localStorage.removeItem(LOCAL_API_KEY_STORAGE);
+    } catch (_) {}
   }
 
   let membersMap = {};
@@ -316,12 +324,14 @@
   const COLUMNS = [
     { key: "salaried", label: "$", title: "Salaried", defaultDir: "desc", type: "bool" },
     { key: "excluded", label: "X", title: "Exclude from Payment", defaultDir: "desc", type: "bool" },
+    { key: "hitLimited", label: "Hit Lim", title: "Apply Hit Limit to Member", defaultDir: "desc", type: "bool" },
+    { key: "payLimited", label: "$ Lim", title: "Apply Max Payout Limit to Member", defaultDir: "desc", type: "bool" },
     { key: "name", label: "Member", title: "Member", defaultDir: "asc", type: "string" },
     { key: "warHits", label: "Hits", title: "War Hits", defaultDir: "desc", type: "num" },
     { key: "warRespect", label: "Respect", title: "War Respect", defaultDir: "desc", type: "num" },
     { key: "chainOutsideHits", label: "Outside Chain", title: "Outside Chain Hits (10+)", defaultDir: "desc", type: "num" },
     { key: "ignoredOutsideHits", label: "Outside Non-Chain", title: "Outside Non-Chain Hits (<10)", defaultDir: "desc", type: "num" },
-    { key: "weightedRespect", label: "Weighted Respect", title: "Total Weighted Respect", defaultDir: "desc", type: "num" },
+    { key: "weightedRespect", label: "Weighted Respect", title: "Counted Weighted Respect", defaultDir: "desc", type: "num" },
     { key: "salaryPay", label: "Salary Pay", title: "Salary Pay", defaultDir: "desc", type: "num" },
     { key: "respectPay", label: "Respect Pay", title: "Respect Pay", defaultDir: "desc", type: "num" },
     { key: "hitPay", label: "Hit Pay", title: "Hit Pay", defaultDir: "desc", type: "num" }
@@ -438,6 +448,8 @@
       if (cfg.salariedPct !== undefined) document.getElementById("salariedPct").value = cfg.salariedPct;
       if (cfg.outsideHitRespect !== undefined) document.getElementById("outsideHitRespect").value = cfg.outsideHitRespect;
       if (cfg.salariedEarnHits !== undefined) document.getElementById("salariedEarnHits").value = cfg.salariedEarnHits;
+      document.getElementById("hitLimit").value = cfg.hitLimit !== undefined ? cfg.hitLimit : 0;
+      document.getElementById("payoutLimit").value = cfg.payoutLimit !== undefined ? cfg.payoutLimit : 0;
 
       if (warData.members) {
         const normalizedMembers = {};
@@ -446,7 +458,9 @@
             id,
             name: m.name || `ID ${id}`,
             salaried: Boolean(m.salaried),
-            excluded: Boolean(m.excluded)
+            excluded: Boolean(m.excluded),
+            hitLimited: Boolean(m.hitLimited),
+            payLimited: Boolean(m.payLimited)
           };
         }
         membersMap = normalizedMembers;
@@ -507,7 +521,9 @@
           id: String(id),
           name: info.name || `Member ${id}`,
           salaried: Boolean(membersMap[String(id)]?.salaried),
-          excluded: Boolean(membersMap[String(id)]?.excluded)
+          excluded: Boolean(membersMap[String(id)]?.excluded),
+          hitLimited: Boolean(membersMap[String(id)]?.hitLimited),
+          payLimited: Boolean(membersMap[String(id)]?.payLimited)
         };
       }
       membersMap = { ...membersMap, ...nextMembers };
@@ -671,7 +687,7 @@
 
     const stats = {};
     for (const id of Object.keys(membersMap)) {
-      stats[id] = { warHits: 0, warRespect: 0, chainOutsideHits: 0, ignoredOutsideHits: 0 };
+      stats[id] = { warHits: 0, warRespect: 0, chainOutsideHits: 0, ignoredOutsideHits: 0, qualifyingSequence: [] };
     }
 
     for (const run of runs) {
@@ -683,17 +699,22 @@
             id: uid,
             name: atk.attacker_name || `ID ${uid}`,
             salaried: false,
-            excluded: false
+            excluded: false,
+            hitLimited: false,
+            payLimited: false
           };
-          stats[uid] = { warHits: 0, warRespect: 0, chainOutsideHits: 0, ignoredOutsideHits: 0 };
+          stats[uid] = { warHits: 0, warRespect: 0, chainOutsideHits: 0, ignoredOutsideHits: 0, qualifyingSequence: [] };
         }
 
         const isWarTarget = enemyId && Number(atk.defender_faction) === enemyId;
         if (isWarTarget) {
+          const resp = Number(atk.respect ?? atk.respect_gain ?? 0);
           stats[uid].warHits += 1;
-          stats[uid].warRespect += Number(atk.respect ?? atk.respect_gain ?? 0);
+          stats[uid].warRespect += resp;
+          stats[uid].qualifyingSequence.push({ type: "war", respect: resp });
         } else if (isChain) {
           stats[uid].chainOutsideHits += 1;
+          stats[uid].qualifyingSequence.push({ type: "outsideChain", respect: 0 });
         } else {
           stats[uid].ignoredOutsideHits += 1;
         }
@@ -703,6 +724,54 @@
     return stats;
   }
 
+  /**
+   * Distributes `totalPool` proportionally by `weightKey` while enforcing `payoutCap`
+   * on items where `capFlagKey` is true. Any unspent excess above a cap redistributes
+   * proportionally to uncapped items.
+   */
+  function distributeWithCap(items, totalPool, weightKey, capFlagKey, payoutCap) {
+    const payouts = new Array(items.length).fill(0);
+    if (totalPool <= 0 || items.length === 0) return payouts;
+
+    const active = new Set();
+    for (let i = 0; i < items.length; i++) {
+      if ((Number(items[i][weightKey]) || 0) > 0) active.add(i);
+    }
+
+    let remainingBudget = totalPool;
+    const hasCap = payoutCap > 0;
+
+    while (active.size > 0 && remainingBudget > 0) {
+      let weightSum = 0;
+      for (const idx of active) {
+        weightSum += Number(items[idx][weightKey]) || 0;
+      }
+      if (weightSum <= 0) break;
+
+      let cappedAny = false;
+      for (const idx of Array.from(active)) {
+        const w = Number(items[idx][weightKey]) || 0;
+        const share = remainingBudget * (w / weightSum);
+        if (hasCap && items[idx][capFlagKey] && share >= payoutCap) {
+          payouts[idx] = Math.floor(payoutCap);
+          remainingBudget = Math.max(0, remainingBudget - payouts[idx]);
+          active.delete(idx);
+          cappedAny = true;
+        }
+      }
+
+      if (!cappedAny) {
+        for (const idx of active) {
+          const w = Number(items[idx][weightKey]) || 0;
+          payouts[idx] = Math.floor(remainingBudget * (w / weightSum));
+        }
+        break;
+      }
+    }
+
+    return payouts;
+  }
+
   function recalculate() {
     const sellAmount = Math.max(0, Number(document.getElementById("sellAmount").value) || 0);
     const sellTaxPct = Math.max(0, Number(document.getElementById("sellTaxPct").value) || 0);
@@ -710,6 +779,8 @@
     const salariedPct = Math.max(0, Number(document.getElementById("salariedPct").value) || 0);
     const outsideHitRespect = Math.max(0, Number(document.getElementById("outsideHitRespect").value) || 0);
     const salariedEarnHits = document.getElementById("salariedEarnHits").value === "yes";
+    const hitLimit = Math.max(0, Math.floor(Number(document.getElementById("hitLimit").value) || 0));
+    const payoutLimit = Math.max(0, Number(document.getElementById("payoutLimit").value) || 0);
 
     const netAfterTax = sellAmount * (1 - sellTaxPct / 100);
     const baseFactionCut = netAfterTax * (factionCutPct / 100);
@@ -725,36 +796,61 @@
     let totalHitsMade = 0;
 
     const rows = Object.values(membersMap).map(m => {
-      const s = hitStats[m.id] || { warHits: 0, warRespect: 0, chainOutsideHits: 0, ignoredOutsideHits: 0 };
-      const rawWeightedRespect = s.warRespect + (s.chainOutsideHits * outsideHitRespect);
+      const s = hitStats[m.id] || {
+        warHits: 0,
+        warRespect: 0,
+        chainOutsideHits: 0,
+        ignoredOutsideHits: 0,
+        qualifyingSequence: []
+      };
+
       const rawHitsMade = s.warHits + s.chainOutsideHits;
+      const isHitCapped = m.hitLimited && hitLimit > 0 && rawHitsMade > hitLimit;
+      const countedSeq = isHitCapped ? s.qualifyingSequence.slice(0, hitLimit) : s.qualifyingSequence;
+
+      let countedWeightedRespect = 0;
+      for (const item of countedSeq) {
+        if (item.type === "war") countedWeightedRespect += item.respect;
+        else countedWeightedRespect += outsideHitRespect;
+      }
+      const countedHitsMade = countedSeq.length;
 
       const isPayable = !m.excluded && (!m.salaried || salariedEarnHits);
-      const eligibleRespect = isPayable ? rawWeightedRespect : 0;
-      const eligibleHits = isPayable ? rawHitsMade : 0;
+      const eligibleRespect = isPayable ? countedWeightedRespect : 0;
+      const eligibleHits = isPayable ? countedHitsMade : 0;
 
       totalWeightedRespect += eligibleRespect;
       totalHitsMade += eligibleHits;
 
-      return { ...m, ...s, weightedRespect: rawWeightedRespect, eligibleRespect, eligibleHits };
+      return {
+        ...m,
+        ...s,
+        rawHitsMade,
+        countedHitsMade,
+        isHitCapped,
+        weightedRespect: countedWeightedRespect,
+        eligibleRespect,
+        eligibleHits
+      };
     });
+
+    const respectPayouts = distributeWithCap(rows, remainingPool, "eligibleRespect", "payLimited", payoutLimit);
+    const hitPayouts = distributeWithCap(rows, netAfterTax, "eligibleHits", "payLimited", payoutLimit);
 
     const salaryPerPerson = salariedMembers.length > 0 ? Math.floor(salariedPool / salariedMembers.length) : 0;
 
     let totalDistributed = 0;
-    latestRows = rows.map(r => {
+    latestRows = rows.map((r, idx) => {
       if (r.excluded) {
-        return { ...r, salaryPay: 0, respectPay: 0, hitPay: 0 };
+        return { ...r, salaryPay: 0, respectPay: 0, hitPay: 0, isRespectPayCapped: false, isHitPayCapped: false };
       }
       const salaryPay = r.salaried ? salaryPerPerson : 0;
-      const respectPay = totalWeightedRespect > 0
-        ? Math.floor(remainingPool * (r.eligibleRespect / totalWeightedRespect))
-        : 0;
-      const hitPay = totalHitsMade > 0
-        ? Math.floor(netAfterTax * (r.eligibleHits / totalHitsMade))
-        : 0;
+      const respectPay = respectPayouts[idx] || 0;
+      const hitPay = hitPayouts[idx] || 0;
+      const isRespectPayCapped = r.payLimited && payoutLimit > 0 && respectPay >= Math.floor(payoutLimit);
+      const isHitPayCapped = r.payLimited && payoutLimit > 0 && hitPay >= Math.floor(payoutLimit);
       totalDistributed += salaryPay + respectPay;
-      return { ...r, salaryPay, respectPay, hitPay };
+      return { ...r, salaryPay, respectPay, hitPay, isRespectPayCapped, isHitPayCapped };
     });
 
     sortLatestRows();
@@ -775,7 +871,7 @@
   function renderTable() {
     const tbody = document.getElementById("memberTableBody");
     if (latestRows.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; color:var(--muted); padding:16px;">No members loaded yet. Sync from Torn or select a saved war.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; color:var(--muted); padding:16px;">No members loaded yet. Sync from Torn or select a saved war.</td></tr>`;
       return;
     }
 
@@ -783,15 +879,17 @@
       <tr class="${r.excluded ? "excluded-row" : ""}">
         <td><input type="checkbox" name="salaried_${escapeHtml(r.id)}" ${r.salaried ? "checked" : ""} onchange="toggleMemberFlag('${escapeHtml(r.id)}', 'salaried', this.checked)" /></td>
         <td><input type="checkbox" name="excluded_${escapeHtml(r.id)}" ${r.excluded ? "checked" : ""} onchange="toggleMemberFlag('${escapeHtml(r.id)}', 'excluded', this.checked)" /></td>
+        <td><input type="checkbox" name="hitLimited_${escapeHtml(r.id)}" ${r.hitLimited ? "checked" : ""} onchange="toggleMemberFlag('${escapeHtml(r.id)}', 'hitLimited', this.checked)" /></td>
+        <td><input type="checkbox" name="payLimited_${escapeHtml(r.id)}" ${r.payLimited ? "checked" : ""} onchange="toggleMemberFlag('${escapeHtml(r.id)}', 'payLimited', this.checked)" /></td>
         <td>${escapeHtml(r.name)} [${escapeHtml(r.id)}]</td>
-        <td>${r.warHits}</td>
+        <td>${r.warHits}${r.isHitCapped ? `<span class="cap-badge" title="Counted ${r.countedHitsMade} of ${r.rawHitsMade} qualifying hits">(${r.countedHitsMade})</span>` : ""}</td>
         <td>${r.warRespect.toFixed(2)}</td>
         <td>${r.chainOutsideHits}</td>
         <td style="color: var(--muted)">${r.ignoredOutsideHits}</td>
         <td><strong>${r.weightedRespect.toFixed(2)}</strong></td>
         <td>${formatMoney(r.salaryPay)}</td>
-        <td style="color: var(--green); font-weight: 700;">${formatMoney(r.respectPay)}</td>
-        <td style="color: var(--amber); font-weight: 700;">${formatMoney(r.hitPay)}</td>
+        <td style="color: var(--green); font-weight: 700;">${formatMoney(r.respectPay)}${r.isRespectPayCapped ? `<span class="cap-badge" title="Capped at Max Payout Limit">MAX</span>` : ""}</td>
+        <td style="color: var(--amber); font-weight: 700;">${formatMoney(r.hitPay)}${r.isHitPayCapped ? `<span class="cap-badge" title="Capped at Max Payout Limit">MAX</span>` : ""}</td>
       </tr>
     `).join("");
   }
@@ -825,14 +923,18 @@
           salariedPct: Number(document.getElementById("salariedPct").value) || 0,
           outsideHitRespect: Number(document.getElementById("outsideHitRespect").value) || 0,
           salariedEarnHits: document.getElementById("salariedEarnHits").value,
+          hitLimit: Math.max(0, Math.floor(Number(document.getElementById("hitLimit").value) || 0)),
+          payoutLimit: Math.max(0, Number(document.getElementById("payoutLimit").value) || 0),
           salariedIds: Object.values(membersMap).filter(m => m.salaried).map(m => m.id),
           excludedIds: Object.values(membersMap).filter(m => m.excluded).map(m => m.id),
+          hitLimitedIds: Object.values(membersMap).filter(m => m.hitLimited).map(m => m.id),
+          payLimitedIds: Object.values(membersMap).filter(m => m.payLimited).map(m => m.id),
           savedAt: Date.now()
         }
       });
       await refreshSavedWarsList();
       document.getElementById("savedWarSelect").value = warKey;
-      setStatus("Saved war roster, salaried/excluded flags, and payout settings to Firebase (API key excluded).", "ok");
+      setStatus("Saved war roster, flags, limits, and payout settings to Firebase (API key excluded).", "ok");
     } catch (err) {
       setStatus(`Failed to save war: ${err.message}`, "err");
     }
