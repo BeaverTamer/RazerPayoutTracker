@@ -473,6 +473,7 @@
       const toTs = Math.max(Number(document.getElementById("warEnd").value) || nowSec, fromTs);
 
       if (fromTs > nowSec) {
+        attacksMap = {};
         recalculate();
         return setStatus(
           `Synced ${Object.keys(membersMap).length} members. Selected war hasn't started yet (${formatTctDate(fromTs)})—pick a completed war in the dropdown to load hits.`,
@@ -480,18 +481,19 @@
         );
       }
 
-      // Paginate backward through Torn's 100-attack-per-request window
-      let cursorTo = toTs;
+      // Torn v1 attacks returns up to 100 attacks starting from `from` moving forward.
+      // Advance `cursorFrom = newestTs + 1` to walk through the entire war window.
+      let cursorFrom = fromTs;
       let pagesFetched = 0;
-      const maxPages = 15;
+      const maxPages = 30;
       const incomingAttacks = {};
 
       for (let page = 0; page < maxPages; page++) {
-        if (cursorTo < fromTs) break;
-        setStatus(`Fetching attacks for ${formatTctDate(fromTs)} (page ${page + 1})...`);
+        if (cursorFrom > toTs) break;
+        setStatus(`Fetching attacks for ${formatTctDate(fromTs)} (page ${page + 1}, ${Object.keys(incomingAttacks).length} loaded)...`);
 
         const atkRes = await fetch(
-          `https://api.torn.com/faction/?selections=attacks&from=${fromTs}&to=${cursorTo}&key=${encodeURIComponent(key)}`
+          `https://api.torn.com/faction/?selections=attacks&from=${cursorFrom}&to=${toTs}&key=${encodeURIComponent(key)}`
         );
         const atkData = await atkRes.json();
         if (atkData.error) {
@@ -500,25 +502,26 @@
         }
 
         const batch = atkData.attacks || {};
-        const entries = Object.values(batch);
+        const entries = Object.entries(batch);
         pagesFetched += 1;
         if (entries.length === 0) break;
 
-        Object.assign(incomingAttacks, batch);
-
-        let oldestTs = Infinity;
-        for (const a of entries) {
+        let newInBatch = 0;
+        let newestTs = 0;
+        for (const [atkId, a] of entries) {
+          if (!incomingAttacks[atkId]) newInBatch += 1;
+          incomingAttacks[atkId] = a;
           const t = Number(a.timestamp_ended || a.timestamp_started || 0);
-          if (t > 0 && t < oldestTs) oldestTs = t;
+          if (t > newestTs) newestTs = t;
         }
 
-        if (!Number.isFinite(oldestTs) || oldestTs <= fromTs || entries.length < 100) {
+        if (entries.length < 100 || newInBatch === 0 || newestTs <= cursorFrom || newestTs >= toTs) {
           break;
         }
-        cursorTo = oldestTs - 1;
+        cursorFrom = newestTs + 1;
       }
 
-      attacksMap = { ...attacksMap, ...incomingAttacks };
+      attacksMap = incomingAttacks;
 
       if (db && fromTs) {
         if (Object.keys(incomingAttacks).length > 0) {
@@ -530,9 +533,18 @@
         document.getElementById("savedWarSelect").value = String(fromTs);
       }
 
+      const allAtks = Object.values(attacksMap);
+      const myHitsCount = allAtks.filter(a => Number(a.attacker_faction) === detectedFactionId).length;
+      const enemyId = Number(document.getElementById("enemyFactionId").value) || 0;
+      const warWinsCount = allAtks.filter(
+        a => Number(a.attacker_faction) === detectedFactionId &&
+             Number(a.defender_faction) === enemyId &&
+             WIN_RESULTS.has(a.result)
+      ).length;
+
       recalculate();
       setStatus(
-        `Synced ${Object.keys(membersMap).length} members and ${Object.keys(attacksMap).length} attacks across ${pagesFetched} page(s).`,
+        `Synced ${Object.keys(membersMap).length} members & ${allAtks.length} total attacks (${pagesFetched} page(s)) — ${myHitsCount} outgoing by [${detectedFactionId}], ${warWinsCount} war wins vs [${enemyId}].`,
         "ok"
       );
     } catch (err) {
