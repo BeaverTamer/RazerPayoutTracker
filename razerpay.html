@@ -815,31 +815,65 @@
     return stats;
   }
 
-  function distributeWithCap(items, totalPool, weightKey, capFlagKey, payoutCap) {
+  /**
+   * Evaluates money caps first on full uncapped weights (`uncappedWeightKey`), locking
+   * any `payLimited` member who hits `payoutCap` regardless of hit caps. Then applies
+   * hit-capped weights (`hitCappedWeightKey`) to everyone remaining and redistributes
+   * the remaining pool proportionally.
+   */
+  function distributeMoneyCapFirst(items, totalPool, uncappedWeightKey, hitCappedWeightKey, capFlagKey, payoutCap) {
     const payouts = new Array(items.length).fill(0);
-    if (totalPool <= 0 || items.length === 0) return payouts;
+    const hitMoneyCap = new Array(items.length).fill(false);
+    if (totalPool <= 0 || items.length === 0) return { payouts, hitMoneyCap };
 
     const active = new Set();
     for (let i = 0; i < items.length; i++) {
-      if ((Number(items[i][weightKey]) || 0) > 0) active.add(i);
+      if ((Number(items[i][uncappedWeightKey]) || 0) > 0) active.add(i);
     }
 
     let remainingBudget = totalPool;
     const hasCap = payoutCap > 0;
 
-    while (active.size > 0 && remainingBudget > 0) {
-      let weightSum = 0;
-      for (const idx of active) {
-        weightSum += Number(items[idx][weightKey]) || 0;
+    // Phase 1: Evaluate money cap first using uncapped hits/respect
+    if (hasCap) {
+      while (active.size > 0 && remainingBudget > 0) {
+        let uncappedSum = 0;
+        for (const idx of active) {
+          uncappedSum += Number(items[idx][uncappedWeightKey]) || 0;
+        }
+        if (uncappedSum <= 0) break;
+
+        let cappedAny = false;
+        for (const idx of Array.from(active)) {
+          const w = Number(items[idx][uncappedWeightKey]) || 0;
+          const share = remainingBudget * (w / uncappedSum);
+          if (items[idx][capFlagKey] && share >= payoutCap) {
+            payouts[idx] = Math.floor(payoutCap);
+            hitMoneyCap[idx] = true;
+            remainingBudget = Math.max(0, remainingBudget - payouts[idx]);
+            active.delete(idx);
+            cappedAny = true;
+          }
+        }
+        if (!cappedAny) break;
       }
-      if (weightSum <= 0) break;
+    }
+
+    // Phase 2: Apply hit limits to remaining uncapped-by-money members and distribute remaining pool
+    while (active.size > 0 && remainingBudget > 0) {
+      let cappedWeightSum = 0;
+      for (const idx of active) {
+        cappedWeightSum += Number(items[idx][hitCappedWeightKey]) || 0;
+      }
+      if (cappedWeightSum <= 0) break;
 
       let cappedAny = false;
       for (const idx of Array.from(active)) {
-        const w = Number(items[idx][weightKey]) || 0;
-        const share = remainingBudget * (w / weightSum);
+        const w = Number(items[idx][hitCappedWeightKey]) || 0;
+        const share = remainingBudget * (w / cappedWeightSum);
         if (hasCap && items[idx][capFlagKey] && share >= payoutCap) {
           payouts[idx] = Math.floor(payoutCap);
+          hitMoneyCap[idx] = true;
           remainingBudget = Math.max(0, remainingBudget - payouts[idx]);
           active.delete(idx);
           cappedAny = true;
@@ -848,14 +882,14 @@
 
       if (!cappedAny) {
         for (const idx of active) {
-          const w = Number(items[idx][weightKey]) || 0;
-          payouts[idx] = Math.floor(remainingBudget * (w / weightSum));
+          const w = Number(items[idx][hitCappedWeightKey]) || 0;
+          payouts[idx] = Math.floor(remainingBudget * (w / cappedWeightSum));
         }
         break;
       }
     }
 
-    return payouts;
+    return { payouts, hitMoneyCap };
   }
 
   function recalculate() {
@@ -878,9 +912,6 @@
 
     const hitStats = classifyHits();
 
-    let totalWeightedRespect = 0;
-    let totalHitsMade = 0;
-
     const rows = Object.values(membersMap).map(m => {
       const s = hitStats[m.id] || {
         warHits: 0,
@@ -891,52 +922,101 @@
       };
 
       const rawHitsMade = s.warHits + s.chainOutsideHits;
-      const isHitCapped = m.hitLimited && hitLimit > 0 && rawHitsMade > hitLimit;
-      const countedSeq = isHitCapped ? s.qualifyingSequence.slice(0, hitLimit) : s.qualifyingSequence;
+      const rawWeightedRespect = s.warRespect + (s.chainOutsideHits * outsideHitRespect);
 
-      let countedWeightedRespect = 0;
-      for (const item of countedSeq) {
-        if (item.type === "war") countedWeightedRespect += item.respect;
-        else countedWeightedRespect += outsideHitRespect;
+      const hasHitCap = m.hitLimited && hitLimit > 0 && rawHitsMade > hitLimit;
+      const hitLimitedSeq = hasHitCap ? s.qualifyingSequence.slice(0, hitLimit) : s.qualifyingSequence;
+
+      let hitLimitedWeightedRespect = 0;
+      for (const item of hitLimitedSeq) {
+        if (item.type === "war") hitLimitedWeightedRespect += item.respect;
+        else hitLimitedWeightedRespect += outsideHitRespect;
       }
-      const countedHitsMade = countedSeq.length;
+      const hitLimitedHitsMade = hitLimitedSeq.length;
 
       const isPayable = !m.excluded && (!m.salaried || salariedEarnHits);
-      const eligibleRespect = isPayable ? countedWeightedRespect : 0;
-      const eligibleHits = isPayable ? countedHitsMade : 0;
-
-      totalWeightedRespect += eligibleRespect;
-      totalHitsMade += eligibleHits;
-
       return {
         ...m,
         ...s,
         rawHitsMade,
-        countedHitsMade,
-        isHitCapped,
-        weightedRespect: countedWeightedRespect,
-        eligibleRespect,
-        eligibleHits
+        rawWeightedRespect,
+        hasHitCap,
+        hitLimitedHitsMade,
+        hitLimitedWeightedRespect,
+        uncappedEligibleRespect: isPayable ? rawWeightedRespect : 0,
+        uncappedEligibleHits: isPayable ? rawHitsMade : 0,
+        hitLimitedEligibleRespect: isPayable ? hitLimitedWeightedRespect : 0,
+        hitLimitedEligibleHits: isPayable ? hitLimitedHitsMade : 0
       };
     });
 
-    const respectPayouts = distributeWithCap(rows, remainingPool, "eligibleRespect", "payLimited", payoutLimit);
-    const hitPayouts = distributeWithCap(rows, netAfterTax, "eligibleHits", "payLimited", payoutLimit);
+    const respectRes = distributeMoneyCapFirst(
+      rows,
+      remainingPool,
+      "uncappedEligibleRespect",
+      "hitLimitedEligibleRespect",
+      "payLimited",
+      payoutLimit
+    );
+    const hitRes = distributeMoneyCapFirst(
+      rows,
+      netAfterTax,
+      "uncappedEligibleHits",
+      "hitLimitedEligibleHits",
+      "payLimited",
+      payoutLimit
+    );
 
     const salaryPerPerson = salariedMembers.length > 0 ? Math.floor(salariedPool / salariedMembers.length) : 0;
 
     let totalDistributed = 0;
+    let totalWeightedRespect = 0;
+    let totalHitsMade = 0;
+
     latestRows = rows.map((r, idx) => {
       if (r.excluded) {
-        return { ...r, salaryPay: 0, respectPay: 0, hitPay: 0, isRespectPayCapped: false, isHitPayCapped: false };
+        return {
+          ...r,
+          countedHitsMade: 0,
+          isHitCapped: false,
+          weightedRespect: 0,
+          salaryPay: 0,
+          respectPay: 0,
+          hitPay: 0,
+          isRespectPayCapped: false,
+          isHitPayCapped: false
+        };
       }
+
+      const isRespectPayCapped = Boolean(respectRes.hitMoneyCap[idx]);
+      const isHitPayCapped = Boolean(hitRes.hitMoneyCap[idx]);
+      const isHitCapped = r.hasHitCap && !isRespectPayCapped;
+
+      const countedHitsMade = isHitCapped ? r.hitLimitedHitsMade : r.rawHitsMade;
+      const weightedRespect = isHitCapped ? r.hitLimitedWeightedRespect : r.rawWeightedRespect;
+
+      const isPayable = !r.salaried || salariedEarnHits;
+      if (isPayable) {
+        totalWeightedRespect += weightedRespect;
+        totalHitsMade += countedHitsMade;
+      }
+
       const salaryPay = r.salaried ? salaryPerPerson : 0;
-      const respectPay = respectPayouts[idx] || 0;
-      const hitPay = hitPayouts[idx] || 0;
-      const isRespectPayCapped = r.payLimited && payoutLimit > 0 && respectPay >= Math.floor(payoutLimit);
-      const isHitPayCapped = r.payLimited && payoutLimit > 0 && hitPay >= Math.floor(payoutLimit);
+      const respectPay = respectRes.payouts[idx] || 0;
+      const hitPay = hitRes.payouts[idx] || 0;
       totalDistributed += salaryPay + respectPay;
-      return { ...r, salaryPay, respectPay, hitPay, isRespectPayCapped, isHitPayCapped };
+
+      return {
+        ...r,
+        countedHitsMade,
+        isHitCapped,
+        weightedRespect,
+        salaryPay,
+        respectPay,
+        hitPay,
+        isRespectPayCapped,
+        isHitPayCapped
+      };
     });
 
     sortLatestRows();
