@@ -18,9 +18,9 @@
       --red: #ef4444;
     }
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-    body { margin: 0; padding: 12px; background: var(--bg); color: var(--text); }
+    body { margin: 0; padding: 10px; background: var(--bg); color: var(--text); }
     .container { max-width: 1420px; margin: 0 auto; }
-    h1 { margin: 0 0 12px; font-size: 1.35rem; }
+    h1 { margin: 0 0 12px; font-size: 1.3rem; }
     .card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -80,29 +80,28 @@
       -webkit-overflow-scrolling: touch;
     }
     table {
-      width: auto;
-      max-width: 100%;
+      width: 1%;
       border-collapse: collapse;
-      margin-top: 8px;
-      font-size: 0.8rem;
+      margin-top: 6px;
+      font-size: 0.78rem;
       table-layout: auto;
     }
     th, td {
-      padding: 6px 6px;
+      padding: 5px 4px;
       border-bottom: 1px solid var(--border);
       text-align: right;
       white-space: nowrap;
-      width: 1%;
       font-variant-numeric: tabular-nums;
     }
     th:nth-child(1), td:nth-child(1),
     th:nth-child(2), td:nth-child(2) {
       text-align: center;
-      padding-left: 4px;
-      padding-right: 4px;
+      padding-left: 3px;
+      padding-right: 3px;
     }
     th:nth-child(3), td:nth-child(3) {
       text-align: left;
+      padding-right: 8px;
     }
     th {
       color: var(--muted);
@@ -110,18 +109,17 @@
       background: #131822;
       cursor: pointer;
       user-select: none;
-      white-space: normal;
-      line-height: 1.15;
+      line-height: 1.1;
       vertical-align: bottom;
     }
     th:hover { color: var(--text); background: #19202e; }
-    .sort-arrow { font-size: 0.65rem; margin-left: 2px; opacity: 0.75; }
+    .sort-arrow { font-size: 0.62rem; margin-left: 1px; opacity: 0.75; }
     th.sorted { color: var(--text); }
     tr:hover { background: #1e2533; }
     tr.excluded-row { opacity: 0.52; }
     input[type="checkbox"] {
-      width: 15px;
-      height: 15px;
+      width: 14px;
+      height: 14px;
       margin: 0;
       cursor: pointer;
       vertical-align: middle;
@@ -131,12 +129,11 @@
     .status.err { color: var(--red); }
 
     @media (max-width: 640px) {
-      body { padding: 8px; }
-      .card { padding: 10px; }
-      table { font-size: 0.75rem; }
-      th, td { padding: 5px 4px; }
-      th:nth-child(1), td:nth-child(1),
-      th:nth-child(2), td:nth-child(2) { padding: 5px 3px; }
+      body { padding: 6px; }
+      .card { padding: 8px; }
+      table { font-size: 0.72rem; }
+      th, td { padding: 4px 3px; }
+      th:nth-child(3), td:nth-child(3) { padding-right: 6px; }
     }
   </style>
 </head>
