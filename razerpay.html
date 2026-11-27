@@ -18,30 +18,30 @@
       --red: #ef4444;
     }
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-    body { margin: 0; padding: 20px; background: var(--bg); color: var(--text); }
+    body { margin: 0; padding: 12px; background: var(--bg); color: var(--text); }
     .container { max-width: 1420px; margin: 0 auto; }
-    h1 { margin: 0 0 16px; font-size: 1.5rem; }
+    h1 { margin: 0 0 12px; font-size: 1.35rem; }
     .card {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 16px;
-      margin-bottom: 16px;
+      padding: 12px;
+      margin-bottom: 12px;
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
     }
-    label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 4px; }
+    label { display: block; font-size: 0.76rem; color: var(--muted); margin-bottom: 4px; }
     input, select, button {
       width: 100%;
-      padding: 8px 10px;
+      padding: 7px 9px;
       border-radius: 6px;
       border: 1px solid var(--border);
       background: #0d1117;
       color: var(--text);
-      font-size: 0.9rem;
+      font-size: 0.88rem;
     }
     button {
       background: var(--accent);
@@ -53,50 +53,91 @@
     button.secondary { background: #263042; }
     button.green { background: var(--green); color: #062419; }
     details {
-      margin-top: 12px;
-      padding-top: 10px;
+      margin-top: 10px;
+      padding-top: 8px;
       border-top: 1px solid var(--border);
     }
     summary {
       cursor: pointer;
-      font-size: 0.82rem;
+      font-size: 0.8rem;
       color: var(--muted);
       user-select: none;
     }
     summary:hover { color: var(--text); }
     .summary-bar {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 10px;
-      margin-top: 12px;
-      padding-top: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+      padding-top: 10px;
       border-top: 1px solid var(--border);
     }
-    .stat-box { background: #111620; padding: 10px; border-radius: 8px; }
-    .stat-box span { display: block; font-size: 0.75rem; color: var(--muted); }
-    .stat-box strong { font-size: 1.05rem; color: var(--green); }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.88rem; }
-    th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: right; }
+    .stat-box { background: #111620; padding: 8px 10px; border-radius: 8px; }
+    .stat-box span { display: block; font-size: 0.72rem; color: var(--muted); }
+    .stat-box strong { font-size: 0.98rem; color: var(--green); font-variant-numeric: tabular-nums; }
+    .table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    table {
+      width: auto;
+      max-width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 0.8rem;
+      table-layout: auto;
+    }
+    th, td {
+      padding: 6px 6px;
+      border-bottom: 1px solid var(--border);
+      text-align: right;
+      white-space: nowrap;
+      width: 1%;
+      font-variant-numeric: tabular-nums;
+    }
     th:nth-child(1), td:nth-child(1),
-    th:nth-child(2), td:nth-child(2),
-    th:nth-child(3), td:nth-child(3) { text-align: left; }
+    th:nth-child(2), td:nth-child(2) {
+      text-align: center;
+      padding-left: 4px;
+      padding-right: 4px;
+    }
+    th:nth-child(3), td:nth-child(3) {
+      text-align: left;
+    }
     th {
       color: var(--muted);
       font-weight: 600;
       background: #131822;
       cursor: pointer;
       user-select: none;
-      white-space: nowrap;
+      white-space: normal;
+      line-height: 1.15;
+      vertical-align: bottom;
     }
     th:hover { color: var(--text); background: #19202e; }
-    .sort-arrow { font-size: 0.72rem; margin-left: 4px; opacity: 0.75; }
+    .sort-arrow { font-size: 0.65rem; margin-left: 2px; opacity: 0.75; }
     th.sorted { color: var(--text); }
     tr:hover { background: #1e2533; }
     tr.excluded-row { opacity: 0.52; }
-    input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
-    .status { font-size: 0.84rem; color: var(--amber); margin-top: 10px; line-height: 1.4; }
+    input[type="checkbox"] {
+      width: 15px;
+      height: 15px;
+      margin: 0;
+      cursor: pointer;
+      vertical-align: middle;
+    }
+    .status { font-size: 0.82rem; color: var(--amber); margin-top: 8px; line-height: 1.4; }
     .status.ok { color: var(--green); }
     .status.err { color: var(--red); }
+
+    @media (max-width: 640px) {
+      body { padding: 8px; }
+      .card { padding: 10px; }
+      table { font-size: 0.75rem; }
+      th, td { padding: 5px 4px; }
+      th:nth-child(1), td:nth-child(1),
+      th:nth-child(2), td:nth-child(2) { padding: 5px 3px; }
+    }
   </style>
 </head>
 <body>
@@ -124,14 +165,14 @@
       </div>
     </div>
 
-    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;">
+    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;">
       <button type="button" style="width:auto;" onclick="syncTornData()">Sync War &amp; Attacks from Torn</button>
       <button type="button" class="secondary" style="width:auto;" onclick="refreshSavedWarsList()">Refresh Saved Wars</button>
     </div>
 
     <details>
       <summary>Advanced / Manual Time Window &amp; Faction IDs</summary>
-      <div class="grid" style="margin-top:10px;">
+      <div class="grid" style="margin-top:8px;">
         <div>
           <label for="warStart">War Start (UNIX)</label>
           <input type="number" id="warStart" name="warStart" placeholder="Auto-filled" oninput="recalculate()" />
@@ -191,21 +232,21 @@
       <div class="stat-box"><span>Faction Cut ($)</span><strong id="factionCutAmt">$0</strong></div>
       <div class="stat-box"><span>Salaried Pool ($)</span><strong id="salariedPoolAmt">$0</strong></div>
       <div class="stat-box"><span>Remaining Pool ($)</span><strong id="hitPoolAmt">$0</strong></div>
-      <div class="stat-box"><span>Total Weighted Respect</span><strong id="totalRespect">0.00</strong></div>
+      <div class="stat-box"><span>Weighted Respect</span><strong id="totalRespect">0.00</strong></div>
       <div class="stat-box"><span>Total Hits Made</span><strong id="totalQualifyingHits">0</strong></div>
     </div>
   </div>
 
   <!-- 3. Member Payout Table -->
   <div class="card">
-    <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
+    <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
       <strong>Member Breakdown</strong>
       <div style="display:flex; gap:8px; width:auto;">
         <button type="button" class="secondary" style="width:auto;" onclick="saveWarToFirebase()">Save War to DB</button>
         <button type="button" class="green" style="width:auto;" onclick="copyPayoutList()">Copy Payout List</button>
       </div>
     </div>
-    <div style="overflow-x:auto;">
+    <div class="table-wrap">
       <table>
         <thead>
           <tr id="memberTableHeadRow"></tr>
@@ -248,17 +289,17 @@
   let sortDir = "desc";
 
   const COLUMNS = [
-    { key: "salaried", label: "Salaried", defaultDir: "desc", type: "bool" },
-    { key: "excluded", label: "Exclude", defaultDir: "desc", type: "bool" },
-    { key: "name", label: "Member", defaultDir: "asc", type: "string" },
-    { key: "warHits", label: "War Hits", defaultDir: "desc", type: "num" },
-    { key: "warRespect", label: "War Respect", defaultDir: "desc", type: "num" },
-    { key: "chainOutsideHits", label: "Outside Chain Hits", defaultDir: "desc", type: "num" },
-    { key: "ignoredOutsideHits", label: "Outside Non-Chain", defaultDir: "desc", type: "num" },
-    { key: "weightedRespect", label: "Total Weighted Respect", defaultDir: "desc", type: "num" },
-    { key: "salaryPay", label: "Salary Pay", defaultDir: "desc", type: "num" },
-    { key: "respectPay", label: "Respect Pay", defaultDir: "desc", type: "num" },
-    { key: "hitPay", label: "Hit Pay", defaultDir: "desc", type: "num" }
+    { key: "salaried", label: "$", title: "Salaried", defaultDir: "desc", type: "bool" },
+    { key: "excluded", label: "X", title: "Exclude from Payment", defaultDir: "desc", type: "bool" },
+    { key: "name", label: "Member", title: "Member", defaultDir: "asc", type: "string" },
+    { key: "warHits", label: "Hits", title: "War Hits", defaultDir: "desc", type: "num" },
+    { key: "warRespect", label: "Respect", title: "War Respect", defaultDir: "desc", type: "num" },
+    { key: "chainOutsideHits", label: "Outside Chain", title: "Outside Chain Hits (10+)", defaultDir: "desc", type: "num" },
+    { key: "ignoredOutsideHits", label: "Outside Non-Chain", title: "Outside Non-Chain Hits (<10)", defaultDir: "desc", type: "num" },
+    { key: "weightedRespect", label: "Weighted Respect", title: "Total Weighted Respect", defaultDir: "desc", type: "num" },
+    { key: "salaryPay", label: "Salary Pay", title: "Salary Pay", defaultDir: "desc", type: "num" },
+    { key: "respectPay", label: "Respect Pay", title: "Respect Pay", defaultDir: "desc", type: "num" },
+    { key: "hitPay", label: "Hit Pay", title: "Hit Pay", defaultDir: "desc", type: "num" }
   ];
 
   const WIN_RESULTS = new Set(["Attacked", "Mugged", "Hospitalized"]);
@@ -286,7 +327,7 @@
     headRow.innerHTML = COLUMNS.map(col => {
       const isSorted = sortKey === col.key;
       const arrow = isSorted ? (sortDir === "asc" ? "▲" : "▼") : "⇅";
-      return `<th class="${isSorted ? "sorted" : ""}" onclick="setSortColumn('${col.key}')">${escapeHtml(col.label)}<span class="sort-arrow">${arrow}</span></th>`;
+      return `<th class="${isSorted ? "sorted" : ""}" title="${escapeHtml(col.title || col.label)}" onclick="setSortColumn('${col.key}')">${escapeHtml(col.label)}<span class="sort-arrow">${arrow}</span></th>`;
     }).join("");
   }
 
