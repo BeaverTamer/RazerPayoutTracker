@@ -213,7 +213,7 @@
     <div class="grid">
       <div>
         <label for="apiKey">Torn API Key (Saved Locally Only)</label>
-        <input type="password" id="apiKey" name="apiKey" autocomplete="off" placeholder="Enter Torn API Key" oninput="persistLocalApiKey()" />
+        <input type="password" id="apiKey" name="apiKey" autocomplete="off" placeholder="Enter Torn API Key" oninput="persistLocalApiKey()" onchange="persistLocalApiKey()" />
       </div>
       <div>
         <label for="rankedWarSelect">Ranked War (From Torn)</label>
@@ -355,19 +355,54 @@
     }
   }
 
-  function loadLocalApiKey() {
+  function readWindowNameKey() {
     try {
-      const saved = localStorage.getItem(LOCAL_API_KEY_STORAGE);
-      if (saved) document.getElementById("apiKey").value = saved;
+      if (!window.name) return "";
+      const parsed = JSON.parse(window.name);
+      return parsed && typeof parsed.razersWarApiKey === "string" ? parsed.razersWarApiKey : "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function writeWindowNameKey(val) {
+    try {
+      let state = {};
+      if (window.name) {
+        try {
+          const parsed = JSON.parse(window.name);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            state = parsed;
+          }
+        } catch (_) {}
+      }
+      if (val) state.razersWarApiKey = val;
+      else delete state.razersWarApiKey;
+      window.name = JSON.stringify(state);
     } catch (_) {}
   }
 
-  function persistLocalApiKey() {
+  function loadLocalApiKey() {
+    let saved = "";
     try {
-      const val = document.getElementById("apiKey").value.trim();
+      saved = localStorage.getItem(LOCAL_API_KEY_STORAGE) || "";
+    } catch (_) {}
+    if (!saved) {
+      saved = readWindowNameKey();
+    }
+    if (saved) {
+      document.getElementById("apiKey").value = saved;
+      persistLocalApiKey();
+    }
+  }
+
+  function persistLocalApiKey() {
+    const val = document.getElementById("apiKey").value.trim();
+    try {
       if (val) localStorage.setItem(LOCAL_API_KEY_STORAGE, val);
       else localStorage.removeItem(LOCAL_API_KEY_STORAGE);
     } catch (_) {}
+    writeWindowNameKey(val);
   }
 
   let membersMap = {};
