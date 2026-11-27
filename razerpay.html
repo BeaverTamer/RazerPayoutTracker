@@ -111,13 +111,12 @@
     </div>
 
     <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;">
-      <button style="width:auto;" onclick="syncTornData()">Sync War & Attacks from Torn</button>
-      <button class="secondary" style="width:auto;" onclick="refreshSavedWarsList()">Refresh Saved Wars</button>
+      <button type="button" style="width:auto;" onclick="syncTornData()">Sync War &amp; Attacks from Torn</button>
+      <button type="button" class="secondary" style="width:auto;" onclick="refreshSavedWarsList()">Refresh Saved Wars</button>
     </div>
 
-    <!-- Hidden by default so raw UNIX timestamps don't clutter the UI -->
     <details>
-      <summary>Advanced / Manual Time Window & Faction IDs</summary>
+      <summary>Advanced / Manual Time Window &amp; Faction IDs</summary>
       <div class="grid" style="margin-top:10px;">
         <div>
           <label for="warStart">War Start (UNIX)</label>
@@ -138,7 +137,7 @@
       </div>
     </details>
 
-    <div id="status" class="status">Initializing...</div>
+    <div id="status" class="status">Ready. Enter your Torn API key and click Sync War &amp; Attacks from Torn.</div>
   </div>
 
   <!-- 2. Payout Settings -->
@@ -187,8 +186,8 @@
     <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
       <strong>Member Breakdown</strong>
       <div style="display:flex; gap:8px; width:auto;">
-        <button class="secondary" style="width:auto;" onclick="saveWarToFirebase()">Save War to DB</button>
-        <button class="green" style="width:auto;" onclick="copyPayoutList()">Copy Payout List</button>
+        <button type="button" class="secondary" style="width:auto;" onclick="saveWarToFirebase()">Save War to DB</button>
+        <button type="button" class="green" style="width:auto;" onclick="copyPayoutList()">Copy Payout List</button>
       </div>
     </div>
     <div style="overflow-x:auto;">
@@ -228,11 +227,13 @@
   };
 
   let db = null;
-  try {
-    firebase.initializeApp(firebaseConfig);
-    db = firebase.database();
-  } catch (err) {
-    console.error("Firebase init error:", err);
+  if (typeof firebase !== "undefined" && firebase.apps) {
+    try {
+      const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(firebaseConfig);
+      db = app.database();
+    } catch (err) {
+      console.error("Firebase init error:", err);
+    }
   }
 
   let membersMap = {};
@@ -241,15 +242,6 @@
   let latestRows = [];
 
   const WIN_RESULTS = new Set(["Attacked", "Mugged", "Hospitalized"]);
-
-  window.addEventListener("DOMContentLoaded", async () => {
-    recalculate();
-    if (!db) {
-      return setStatus("Firebase SDK failed to initialize.", "err");
-    }
-    await refreshSavedWarsList();
-    setStatus("Connected to RazersAllianceWarPayout DB. Enter your Torn API key and click Sync.", "ok");
-  });
 
   function escapeHtml(str) {
     return String(str ?? "")
@@ -410,7 +402,6 @@
         warSelect.appendChild(opt);
       }
 
-      // Default to the most recent Active or Completed war (skipping Upcoming wars unless none exist)
       if (keepSelectedWar && prevWarId && rankedWarsCache[prevWarId]) {
         warSelect.value = prevWarId;
       } else if (sortedEntries.length > 0) {
@@ -555,3 +546,120 @@
 
     let totalDistributed = 0;
     latestRows = rows
+      .map(r => {
+        const salaryPay = r.salaried ? salaryPerPerson : 0;
+        const hitPay = totalWeightedRespect > 0
+          ? Math.floor(hitPool * (r.eligibleRespect / totalWeightedRespect))
+          : 0;
+        const totalPay = salaryPay + hitPay;
+        totalDistributed += totalPay;
+        return { ...r, salaryPay, hitPay, totalPay };
+      })
+      .sort((a, b) => b.totalPay - a.totalPay || b.weightedRespect - a.weightedRespect || a.name.localeCompare(b.name));
+
+    const finalFactionCut = Math.max(0, Math.floor(netAfterTax - totalDistributed));
+
+    document.getElementById("netAfterTax").textContent = formatMoney(Math.floor(netAfterTax));
+    document.getElementById("factionCutAmt").textContent = formatMoney(finalFactionCut);
+    document.getElementById("salariedPoolAmt").textContent = formatMoney(salaryPerPerson * salariedMembers.length);
+    document.getElementById("hitPoolAmt").textContent = formatMoney(Math.floor(hitPool));
+    document.getElementById("totalRespect").textContent = totalWeightedRespect.toFixed(2);
+
+    renderTable();
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById("memberTableBody");
+    if (latestRows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:var(--muted); padding:16px;">No members loaded yet. Sync from Torn or select a saved war.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = latestRows.map(r => `
+      <tr>
+        <td><input type="checkbox" name="salaried_${escapeHtml(r.id)}" ${r.salaried ? "checked" : ""} onchange="toggleSalaried('${escapeHtml(r.id)}', this.checked)" /></td>
+        <td>${escapeHtml(r.name)} [${escapeHtml(r.id)}]</td>
+        <td>${r.warHits}</td>
+        <td>${r.warRespect.toFixed(2)}</td>
+        <td>${r.chainOutsideHits}</td>
+        <td style="color: var(--muted)">${r.ignoredOutsideHits}</td>
+        <td><strong>${r.weightedRespect.toFixed(2)}</strong></td>
+        <td>${formatMoney(r.salaryPay)}</td>
+        <td>${formatMoney(r.hitPay)}</td>
+        <td style="color: var(--green); font-weight: 700;">${formatMoney(r.totalPay)}</td>
+      </tr>
+    `).join("");
+  }
+
+  function toggleSalaried(id, checked) {
+    if (membersMap[id]) {
+      membersMap[id].salaried = checked;
+      recalculate();
+    }
+  }
+
+  async function saveWarToFirebase() {
+    if (!db) return setStatus("Firebase DB is not connected.", "err");
+    const warKey = document.getElementById("warStart").value.trim() || "manual";
+    const warSelect = document.getElementById("rankedWarSelect");
+    const selectedLabel = warSelect.options[warSelect.selectedIndex]?.textContent || "";
+    const vsMatch = selectedLabel.match(/vs\s+(.+?)\s+\(/);
+
+    try {
+      await db.ref(`wars/${warKey}`).update({
+        members: membersMap,
+        payoutConfig: {
+          warStart: Number(document.getElementById("warStart").value) || 0,
+          warEnd: Number(document.getElementById("warEnd").value) || 0,
+          myFactionId: Number(document.getElementById("myFactionId").value) || 0,
+          enemyFactionId: Number(document.getElementById("enemyFactionId").value) || 0,
+          enemyName: vsMatch ? vsMatch[1] : "",
+          sellAmount: Number(document.getElementById("sellAmount").value) || 0,
+          sellTaxPct: Number(document.getElementById("sellTaxPct").value) || 0,
+          factionCutPct: Number(document.getElementById("factionCutPct").value) || 0,
+          salariedPct: Number(document.getElementById("salariedPct").value) || 0,
+          outsideHitRespect: Number(document.getElementById("outsideHitRespect").value) || 0,
+          salariedEarnHits: document.getElementById("salariedEarnHits").value,
+          salariedIds: Object.values(membersMap).filter(m => m.salaried).map(m => m.id),
+          savedAt: Date.now()
+        }
+      });
+      await refreshSavedWarsList();
+      document.getElementById("savedWarSelect").value = warKey;
+      setStatus("Saved war roster, salaried flags, and payout settings to Firebase.", "ok");
+    } catch (err) {
+      setStatus(`Failed to save war: ${err.message}`, "err");
+    }
+  }
+
+  function copyPayoutList() {
+    const lines = latestRows
+      .filter(r => r.totalPay > 0)
+      .map(r => `${r.name} [${r.id}] - ${formatMoney(r.totalPay)}`);
+    if (lines.length === 0) return setStatus("No payouts above $0 to copy.", "err");
+    navigator.clipboard.writeText(lines.join("\n"));
+    setStatus(`Copied ${lines.length} member payouts to clipboard.`, "ok");
+  }
+
+  function formatMoney(n) {
+    return "$" + Number(n || 0).toLocaleString("en-US");
+  }
+
+  function setStatus(msg, type = "") {
+    const el = document.getElementById("status");
+    if (!el) return;
+    el.textContent = msg;
+    el.className = "status" + (type ? ` ${type}` : "");
+  }
+
+  recalculate();
+  if (db) {
+    refreshSavedWarsList().then(() => {
+      setStatus("Connected to RazersAllianceWarPayout DB. Enter your Torn API key and click Sync.", "ok");
+    });
+  } else {
+    setStatus("Running in local/Torn mode (Firebase SDK unavailable—check browser console).", "err");
+  }
+</script>
+</body>
+</html>
