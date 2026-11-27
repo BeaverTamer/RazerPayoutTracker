@@ -19,7 +19,7 @@
     }
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
     body { margin: 0; padding: 20px; background: var(--bg); color: var(--text); }
-    .container { max-width: 1240px; margin: 0 auto; }
+    .container { max-width: 1360px; margin: 0 auto; }
     h1 { margin: 0 0 16px; font-size: 1.5rem; }
     .card {
       background: var(--card);
@@ -175,7 +175,7 @@
         <input type="number" id="outsideHitRespect" name="outsideHitRespect" value="2.5" step="0.1" oninput="recalculate()" />
       </div>
       <div>
-        <label for="salariedEarnHits">Salaried Also Earn Hit Pay?</label>
+        <label for="salariedEarnHits">Salaried Also Earn Hit/Respect Pay?</label>
         <select id="salariedEarnHits" name="salariedEarnHits" onchange="recalculate()">
           <option value="yes">Yes (Salary + Hits)</option>
           <option value="no">No (Salary Only)</option>
@@ -187,8 +187,9 @@
       <div class="stat-box"><span>Net After Tax</span><strong id="netAfterTax">$0</strong></div>
       <div class="stat-box"><span>Faction Cut ($)</span><strong id="factionCutAmt">$0</strong></div>
       <div class="stat-box"><span>Salaried Pool ($)</span><strong id="salariedPoolAmt">$0</strong></div>
-      <div class="stat-box"><span>Hit/Respect Pool ($)</span><strong id="hitPoolAmt">$0</strong></div>
+      <div class="stat-box"><span>Remaining Pool ($)</span><strong id="hitPoolAmt">$0</strong></div>
       <div class="stat-box"><span>Total Weighted Respect</span><strong id="totalRespect">0.00</strong></div>
+      <div class="stat-box"><span>Total Qualifying Hits</span><strong id="totalQualifyingHits">0</strong></div>
     </div>
   </div>
 
@@ -248,10 +249,11 @@
     { key: "name", label: "Member", defaultDir: "asc", type: "string" },
     { key: "warHits", label: "War Hits", defaultDir: "desc", type: "num" },
     { key: "warRespect", label: "War Respect", defaultDir: "desc", type: "num" },
-    { key: "chainOutsideHits", label: "10+ Chain Outside Hits", defaultDir: "desc", type: "num" },
-    { key: "ignoredOutsideHits", label: "Ignored Outside (<10)", defaultDir: "desc", type: "num" },
+    { key: "chainOutsideHits", label: "Outside Chain Hits", defaultDir: "desc", type: "num" },
+    { key: "ignoredOutsideHits", label: "Outside Non-Chain", defaultDir: "desc", type: "num" },
     { key: "weightedRespect", label: "Total Weighted Respect", defaultDir: "desc", type: "num" },
     { key: "salaryPay", label: "Salary Pay", defaultDir: "desc", type: "num" },
+    { key: "respectPay", label: "Respect Pay", defaultDir: "desc", type: "num" },
     { key: "hitPay", label: "Hit Pay", defaultDir: "desc", type: "num" },
     { key: "totalPay", label: "Total Payout", defaultDir: "desc", type: "num" }
   ];
@@ -481,8 +483,6 @@
         );
       }
 
-      // Torn v1 attacks returns up to 100 attacks starting from `from` moving forward.
-      // Advance `cursorFrom = newestTs + 1` to walk through the entire war window.
       let cursorFrom = fromTs;
       let pagesFetched = 0;
       const maxPages = 30;
@@ -629,17 +629,25 @@
 
     const salariedMembers = Object.values(membersMap).filter(m => m.salaried);
     const salariedPool = salariedMembers.length > 0 ? distributable * (salariedPct / 100) : 0;
-    const hitPool = distributable - salariedPool;
+    const remainingPool = distributable - salariedPool;
 
     const hitStats = classifyHits();
 
     let totalWeightedRespect = 0;
+    let totalQualifyingHits = 0;
+
     const rows = Object.values(membersMap).map(m => {
       const s = hitStats[m.id] || { warHits: 0, warRespect: 0, chainOutsideHits: 0, ignoredOutsideHits: 0 };
       const rawWeightedRespect = s.warRespect + (s.chainOutsideHits * outsideHitRespect);
+      const rawQualifyingHits = s.warHits + s.chainOutsideHits;
+
       const eligibleRespect = (!m.salaried || salariedEarnHits) ? rawWeightedRespect : 0;
+      const eligibleHits = (!m.salaried || salariedEarnHits) ? rawQualifyingHits : 0;
+
       totalWeightedRespect += eligibleRespect;
-      return { ...m, ...s, weightedRespect: rawWeightedRespect, eligibleRespect };
+      totalQualifyingHits += eligibleHits;
+
+      return { ...m, ...s, weightedRespect: rawWeightedRespect, eligibleRespect, eligibleHits };
     });
 
     const salaryPerPerson = salariedMembers.length > 0 ? Math.floor(salariedPool / salariedMembers.length) : 0;
@@ -647,12 +655,15 @@
     let totalDistributed = 0;
     latestRows = rows.map(r => {
       const salaryPay = r.salaried ? salaryPerPerson : 0;
-      const hitPay = totalWeightedRespect > 0
-        ? Math.floor(hitPool * (r.eligibleRespect / totalWeightedRespect))
+      const respectPay = totalWeightedRespect > 0
+        ? Math.floor(remainingPool * (r.eligibleRespect / totalWeightedRespect))
         : 0;
-      const totalPay = salaryPay + hitPay;
+      const hitPay = totalQualifyingHits > 0
+        ? Math.floor(remainingPool * (r.eligibleHits / totalQualifyingHits))
+        : 0;
+      const totalPay = salaryPay + respectPay;
       totalDistributed += totalPay;
-      return { ...r, salaryPay, hitPay, totalPay };
+      return { ...r, salaryPay, respectPay, hitPay, totalPay };
     });
 
     sortLatestRows();
@@ -662,8 +673,9 @@
     document.getElementById("netAfterTax").textContent = formatMoney(Math.floor(netAfterTax));
     document.getElementById("factionCutAmt").textContent = formatMoney(finalFactionCut);
     document.getElementById("salariedPoolAmt").textContent = formatMoney(salaryPerPerson * salariedMembers.length);
-    document.getElementById("hitPoolAmt").textContent = formatMoney(Math.floor(hitPool));
+    document.getElementById("hitPoolAmt").textContent = formatMoney(Math.floor(remainingPool));
     document.getElementById("totalRespect").textContent = totalWeightedRespect.toFixed(2);
+    document.getElementById("totalQualifyingHits").textContent = totalQualifyingHits.toLocaleString("en-US");
 
     renderTableHeaders();
     renderTable();
@@ -672,7 +684,7 @@
   function renderTable() {
     const tbody = document.getElementById("memberTableBody");
     if (latestRows.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:var(--muted); padding:16px;">No members loaded yet. Sync from Torn or select a saved war.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; color:var(--muted); padding:16px;">No members loaded yet. Sync from Torn or select a saved war.</td></tr>`;
       return;
     }
 
@@ -686,7 +698,8 @@
         <td style="color: var(--muted)">${r.ignoredOutsideHits}</td>
         <td><strong>${r.weightedRespect.toFixed(2)}</strong></td>
         <td>${formatMoney(r.salaryPay)}</td>
-        <td>${formatMoney(r.hitPay)}</td>
+        <td>${formatMoney(r.respectPay)}</td>
+        <td style="color: var(--amber);">${formatMoney(r.hitPay)}</td>
         <td style="color: var(--green); font-weight: 700;">${formatMoney(r.totalPay)}</td>
       </tr>
     `).join("");
