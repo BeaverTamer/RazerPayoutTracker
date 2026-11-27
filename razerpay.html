@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:," />
   <title>Faction War Payout Calculator</title>
   <style>
     :root {
@@ -77,7 +78,17 @@
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.88rem; }
     th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: right; }
     th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
-    th { color: var(--muted); font-weight: 600; background: #131822; }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      background: #131822;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    th:hover { color: var(--text); background: #19202e; }
+    .sort-arrow { font-size: 0.72rem; margin-left: 4px; opacity: 0.75; }
+    th.sorted { color: var(--text); }
     tr:hover { background: #1e2533; }
     input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
     .status { font-size: 0.84rem; color: var(--amber); margin-top: 10px; line-height: 1.4; }
@@ -193,18 +204,7 @@
     <div style="overflow-x:auto;">
       <table>
         <thead>
-          <tr>
-            <th>Salaried</th>
-            <th>Member</th>
-            <th>War Hits</th>
-            <th>War Respect</th>
-            <th>10+ Chain Outside Hits</th>
-            <th>Ignored Outside (&lt;10)</th>
-            <th>Total Weighted Respect</th>
-            <th>Salary Pay</th>
-            <th>Hit Pay</th>
-            <th>Total Payout</th>
-          </tr>
+          <tr id="memberTableHeadRow"></tr>
         </thead>
         <tbody id="memberTableBody"></tbody>
       </table>
@@ -240,6 +240,21 @@
   let attacksMap = {};
   let rankedWarsCache = {};
   let latestRows = [];
+  let sortKey = "totalPay";
+  let sortDir = "desc"; // "asc" | "desc"
+
+  const COLUMNS = [
+    { key: "salaried", label: "Salaried", defaultDir: "desc", type: "bool" },
+    { key: "name", label: "Member", defaultDir: "asc", type: "string" },
+    { key: "warHits", label: "War Hits", defaultDir: "desc", type: "num" },
+    { key: "warRespect", label: "War Respect", defaultDir: "desc", type: "num" },
+    { key: "chainOutsideHits", label: "10+ Chain Outside Hits", defaultDir: "desc", type: "num" },
+    { key: "ignoredOutsideHits", label: "Ignored Outside (<10)", defaultDir: "desc", type: "num" },
+    { key: "weightedRespect", label: "Total Weighted Respect", defaultDir: "desc", type: "num" },
+    { key: "salaryPay", label: "Salary Pay", defaultDir: "desc", type: "num" },
+    { key: "hitPay", label: "Hit Pay", defaultDir: "desc", type: "num" },
+    { key: "totalPay", label: "Total Payout", defaultDir: "desc", type: "num" }
+  ];
 
   const WIN_RESULTS = new Set(["Attacked", "Mugged", "Hospitalized"]);
 
@@ -259,6 +274,49 @@
       year: "numeric",
       timeZone: "UTC"
     }) + " TCT";
+  }
+
+  function renderTableHeaders() {
+    const headRow = document.getElementById("memberTableHeadRow");
+    headRow.innerHTML = COLUMNS.map(col => {
+      const isSorted = sortKey === col.key;
+      const arrow = isSorted ? (sortDir === "asc" ? "▲" : "▼") : "⇅";
+      return `<th class="${isSorted ? "sorted" : ""}" onclick="setSortColumn('${col.key}')">${escapeHtml(col.label)}<span class="sort-arrow">${arrow}</span></th>`;
+    }).join("");
+  }
+
+  function setSortColumn(key) {
+    const col = COLUMNS.find(c => c.key === key);
+    if (sortKey === key) {
+      sortDir = sortDir === "asc" ? "desc" : "asc";
+    } else {
+      sortKey = key;
+      sortDir = col?.defaultDir || "desc";
+    }
+    sortLatestRows();
+    renderTableHeaders();
+    renderTable();
+  }
+
+  function compareRows(a, b) {
+    const col = COLUMNS.find(c => c.key === sortKey) || { type: "num" };
+    const mult = sortDir === "asc" ? 1 : -1;
+    let cmp = 0;
+
+    if (col.type === "bool") {
+      cmp = (a.salaried ? 1 : 0) - (b.salaried ? 1 : 0);
+    } else if (col.type === "string") {
+      cmp = String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
+    } else {
+      cmp = (Number(a[sortKey]) || 0) - (Number(b[sortKey]) || 0);
+    }
+
+    if (cmp !== 0) return cmp * mult;
+    return String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
+  }
+
+  function sortLatestRows() {
+    latestRows.sort(compareRows);
   }
 
   async function refreshSavedWarsList() {
@@ -426,6 +484,7 @@
       const atkRes = await fetch(`https://api.torn.com/faction/?selections=attacks&from=${fromTs}&to=${toTs}&key=${encodeURIComponent(key)}`);
       const atkData = await atkRes.json();
       if (atkData.error) {
+        recalculate();
         return setStatus(`Torn API Error (${atkData.error.code}): ${atkData.error.error}`, "err");
       }
 
@@ -545,17 +604,17 @@
     const salaryPerPerson = salariedMembers.length > 0 ? Math.floor(salariedPool / salariedMembers.length) : 0;
 
     let totalDistributed = 0;
-    latestRows = rows
-      .map(r => {
-        const salaryPay = r.salaried ? salaryPerPerson : 0;
-        const hitPay = totalWeightedRespect > 0
-          ? Math.floor(hitPool * (r.eligibleRespect / totalWeightedRespect))
-          : 0;
-        const totalPay = salaryPay + hitPay;
-        totalDistributed += totalPay;
-        return { ...r, salaryPay, hitPay, totalPay };
-      })
-      .sort((a, b) => b.totalPay - a.totalPay || b.weightedRespect - a.weightedRespect || a.name.localeCompare(b.name));
+    latestRows = rows.map(r => {
+      const salaryPay = r.salaried ? salaryPerPerson : 0;
+      const hitPay = totalWeightedRespect > 0
+        ? Math.floor(hitPool * (r.eligibleRespect / totalWeightedRespect))
+        : 0;
+      const totalPay = salaryPay + hitPay;
+      totalDistributed += totalPay;
+      return { ...r, salaryPay, hitPay, totalPay };
+    });
+
+    sortLatestRows();
 
     const finalFactionCut = Math.max(0, Math.floor(netAfterTax - totalDistributed));
 
@@ -565,6 +624,7 @@
     document.getElementById("hitPoolAmt").textContent = formatMoney(Math.floor(hitPool));
     document.getElementById("totalRespect").textContent = totalWeightedRespect.toFixed(2);
 
+    renderTableHeaders();
     renderTable();
   }
 
@@ -652,6 +712,7 @@
     el.className = "status" + (type ? ` ${type}` : "");
   }
 
+  renderTableHeaders();
   recalculate();
   if (db) {
     refreshSavedWarsList().then(() => {
