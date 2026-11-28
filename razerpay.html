@@ -19,7 +19,7 @@
     }
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
     body { margin: 0; padding: 10px; background: var(--bg); color: var(--text); }
-    .container { max-width: 1480px; margin: 0 auto; }
+    .container { max-width: 1520px; margin: 0 auto; }
     h1 { margin: 0 0 12px; font-size: 1.3rem; }
     .card {
       background: var(--card);
@@ -40,6 +40,7 @@
       justify-content: flex-start;
       min-width: 0;
     }
+    .hidden { display: none !important; }
     label {
       display: block;
       font-size: 0.76rem;
@@ -99,6 +100,7 @@
     }
     .stat-box span { display: block; font-size: 0.72rem; line-height: 1.25; color: var(--muted); margin-bottom: 4px; }
     .stat-box strong { font-size: 0.98rem; color: var(--green); font-variant-numeric: tabular-nums; }
+    .stat-box strong.neg { color: var(--red); }
     .table-wrap {
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
@@ -263,6 +265,13 @@
   <div class="card">
     <div class="grid">
       <div>
+        <label for="payoutMode">Payout Mode</label>
+        <select id="payoutMode" name="payoutMode" onchange="onPayoutModeChange()">
+          <option value="fixed_rate">Fixed Rate (Remainder → Salary)</option>
+          <option value="pool_split">Pool Split (Salary % First)</option>
+        </select>
+      </div>
+      <div>
         <label for="sellAmount">Cache Gross Sell Amount ($)</label>
         <input type="number" id="sellAmount" name="sellAmount" value="500000000" oninput="recalculate()" />
       </div>
@@ -270,14 +279,27 @@
         <label for="sellTaxPct">Sell Tax (%)</label>
         <input type="number" id="sellTaxPct" name="sellTaxPct" value="5" step="0.1" oninput="recalculate()" />
       </div>
-      <div>
+
+      <!-- Fixed Rate Mode Fields -->
+      <div id="fixedHitRateWrap">
+        <label for="payPerHit">Pay Per Hit ($)</label>
+        <input type="number" id="payPerHit" name="payPerHit" value="2500000" min="0" step="100000" oninput="recalculate()" />
+      </div>
+      <div id="fixedRespectRateWrap">
+        <label for="payPerRespect">Pay Per Respect ($)</label>
+        <input type="number" id="payPerRespect" name="payPerRespect" value="0" min="0" step="50000" oninput="recalculate()" />
+      </div>
+
+      <!-- Pool Split Mode Fields -->
+      <div id="poolFactionCutWrap" class="hidden">
         <label for="factionCutPct">Faction Cut (%)</label>
         <input type="number" id="factionCutPct" name="factionCutPct" value="10" step="0.1" oninput="recalculate()" />
       </div>
-      <div>
+      <div id="poolSalariedPctWrap" class="hidden">
         <label for="salariedPct">Salaried Pool (%)</label>
         <input type="number" id="salariedPct" name="salariedPct" value="15" step="0.1" oninput="recalculate()" />
       </div>
+
       <div>
         <label for="outsideHitRespect">Non-War Chain Hit Respect</label>
         <input type="number" id="outsideHitRespect" name="outsideHitRespect" value="2.5" step="0.1" oninput="recalculate()" />
@@ -301,9 +323,9 @@
 
     <div class="summary-bar">
       <div class="stat-box"><span>Net After Tax</span><strong id="netAfterTax">$0</strong></div>
-      <div class="stat-box"><span>Faction Cut ($)</span><strong id="factionCutAmt">$0</strong></div>
-      <div class="stat-box"><span>Salaried Pool ($)</span><strong id="salariedPoolAmt">$0</strong></div>
-      <div class="stat-box"><span>Remaining Pool ($)</span><strong id="hitPoolAmt">$0</strong></div>
+      <div class="stat-box"><span id="hitPoolLabel">Total Hit/Respect Paid ($)</span><strong id="hitPoolAmt">$0</strong></div>
+      <div class="stat-box"><span id="salariedPoolLabel">Remaining for Salary ($)</span><strong id="salariedPoolAmt">$0</strong></div>
+      <div class="stat-box"><span id="factionCutLabel">Unallocated / Faction ($)</span><strong id="factionCutAmt">$0</strong></div>
       <div class="stat-box"><span>Weighted Respect</span><strong id="totalRespect">0.00</strong></div>
       <div class="stat-box"><span>Counted Hits</span><strong id="totalQualifyingHits">0</strong></div>
     </div>
@@ -409,7 +431,7 @@
   let attacksMap = {};
   let rankedWarsCache = {};
   let latestRows = [];
-  let sortKey = "respectPay";
+  let sortKey = "totalPay";
   let sortDir = "desc";
 
   const COLUMNS = [
@@ -425,10 +447,33 @@
     { key: "weightedRespect", label: "Weighted Respect", title: "Counted Weighted Respect", defaultDir: "desc", type: "num" },
     { key: "salaryPay", label: "Salary Pay", title: "Salary Pay", defaultDir: "desc", type: "num" },
     { key: "respectPay", label: "Respect Pay", title: "Respect Pay", defaultDir: "desc", type: "num" },
-    { key: "hitPay", label: "Hit Pay", title: "Hit Pay", defaultDir: "desc", type: "num" }
+    { key: "hitPay", label: "Hit Pay", title: "Hit Pay", defaultDir: "desc", type: "num" },
+    { key: "totalPay", label: "Total Pay", title: "Total Payout (Salary + Earned)", defaultDir: "desc", type: "num" }
   ];
 
   const WIN_RESULTS = new Set(["Attacked", "Mugged", "Hospitalized"]);
+
+  function onPayoutModeChange() {
+    const mode = document.getElementById("payoutMode").value;
+    const isFixed = mode === "fixed_rate";
+
+    document.getElementById("fixedHitRateWrap").classList.toggle("hidden", !isFixed);
+    document.getElementById("fixedRespectRateWrap").classList.toggle("hidden", !isFixed);
+    document.getElementById("poolFactionCutWrap").classList.toggle("hidden", isFixed);
+    document.getElementById("poolSalariedPctWrap").classList.toggle("hidden", isFixed);
+
+    document.getElementById("hitPoolLabel").textContent = isFixed
+      ? "Total Hit/Respect Paid ($)"
+      : "Remaining Pool ($)";
+    document.getElementById("salariedPoolLabel").textContent = isFixed
+      ? "Remaining for Salary ($)"
+      : "Salaried Pool ($)";
+    document.getElementById("factionCutLabel").textContent = isFixed
+      ? "Unallocated / Faction ($)"
+      : "Faction Cut ($)";
+
+    recalculate();
+  }
 
   function escapeHtml(str) {
     return String(str ?? "")
@@ -529,12 +574,15 @@
       if (!warData) return setStatus(`No data found for war ${warKey}.`, "err");
 
       const cfg = warData.payoutConfig || {};
+      if (cfg.payoutMode !== undefined) document.getElementById("payoutMode").value = cfg.payoutMode;
       if (cfg.warStart !== undefined) document.getElementById("warStart").value = cfg.warStart;
       if (cfg.warEnd !== undefined) document.getElementById("warEnd").value = cfg.warEnd;
       if (cfg.myFactionId !== undefined) document.getElementById("myFactionId").value = cfg.myFactionId;
       if (cfg.enemyFactionId !== undefined) document.getElementById("enemyFactionId").value = cfg.enemyFactionId;
       if (cfg.sellAmount !== undefined) document.getElementById("sellAmount").value = cfg.sellAmount;
       if (cfg.sellTaxPct !== undefined) document.getElementById("sellTaxPct").value = cfg.sellTaxPct;
+      if (cfg.payPerHit !== undefined) document.getElementById("payPerHit").value = cfg.payPerHit;
+      if (cfg.payPerRespect !== undefined) document.getElementById("payPerRespect").value = cfg.payPerRespect;
       if (cfg.factionCutPct !== undefined) document.getElementById("factionCutPct").value = cfg.factionCutPct;
       if (cfg.salariedPct !== undefined) document.getElementById("salariedPct").value = cfg.salariedPct;
       if (cfg.outsideHitRespect !== undefined) document.getElementById("outsideHitRespect").value = cfg.outsideHitRespect;
@@ -558,7 +606,7 @@
       }
 
       attacksMap = warData.attacks || {};
-      recalculate();
+      onPayoutModeChange();
       setStatus(`Loaded saved war (${formatTctDate(Number(warKey))}, ${Object.keys(attacksMap).length} attacks).`, "ok");
     } catch (err) {
       setStatus(`Error loading saved war: ${err.message}`, "err");
@@ -816,10 +864,9 @@
   }
 
   /**
-   * Evaluates money caps first on full uncapped weights (`uncappedWeightKey`), locking
-   * any `payLimited` member who hits `payoutCap` regardless of hit caps. Then applies
-   * hit-capped weights (`hitCappedWeightKey`) to everyone remaining and redistributes
-   * the remaining pool proportionally.
+   * Pool Split helper: evaluates money caps first on uncapped weights, locking
+   * any `payLimited` member who hits `payoutCap` regardless of hit caps. Then
+   * applies hit-capped weights to everyone remaining and redistributes.
    */
   function distributeMoneyCapFirst(items, totalPool, uncappedWeightKey, hitCappedWeightKey, capFlagKey, payoutCap) {
     const payouts = new Array(items.length).fill(0);
@@ -834,7 +881,6 @@
     let remainingBudget = totalPool;
     const hasCap = payoutCap > 0;
 
-    // Phase 1: Evaluate money cap first using uncapped hits/respect
     if (hasCap) {
       while (active.size > 0 && remainingBudget > 0) {
         let uncappedSum = 0;
@@ -859,7 +905,6 @@
       }
     }
 
-    // Phase 2: Apply hit limits to remaining uncapped-by-money members and distribute remaining pool
     while (active.size > 0 && remainingBudget > 0) {
       let cappedWeightSum = 0;
       for (const idx of active) {
@@ -893,8 +938,11 @@
   }
 
   function recalculate() {
+    const payoutMode = document.getElementById("payoutMode").value;
     const sellAmount = Math.max(0, Number(document.getElementById("sellAmount").value) || 0);
     const sellTaxPct = Math.max(0, Number(document.getElementById("sellTaxPct").value) || 0);
+    const payPerHit = Math.max(0, Number(document.getElementById("payPerHit").value) || 0);
+    const payPerRespect = Math.max(0, Number(document.getElementById("payPerRespect").value) || 0);
     const factionCutPct = Math.max(0, Number(document.getElementById("factionCutPct").value) || 0);
     const salariedPct = Math.max(0, Number(document.getElementById("salariedPct").value) || 0);
     const outsideHitRespect = Math.max(0, Number(document.getElementById("outsideHitRespect").value) || 0);
@@ -902,14 +950,8 @@
     const hitLimit = Math.max(0, Math.floor(Number(document.getElementById("hitLimit").value) || 0));
     const payoutLimit = Math.max(0, Number(document.getElementById("payoutLimit").value) || 0);
 
-    const netAfterTax = sellAmount * (1 - sellTaxPct / 100);
-    const baseFactionCut = netAfterTax * (factionCutPct / 100);
-    const distributable = netAfterTax - baseFactionCut;
-
+    const netAfterTax = Math.floor(sellAmount * (1 - sellTaxPct / 100));
     const salariedMembers = Object.values(membersMap).filter(m => m.salaried && !m.excluded);
-    const salariedPool = salariedMembers.length > 0 ? distributable * (salariedPct / 100) : 0;
-    const remainingPool = distributable - salariedPool;
-
     const hitStats = classifyHits();
 
     const rows = Object.values(membersMap).map(m => {
@@ -950,85 +992,208 @@
       };
     });
 
-    const respectRes = distributeMoneyCapFirst(
-      rows,
-      remainingPool,
-      "uncappedEligibleRespect",
-      "hitLimitedEligibleRespect",
-      "payLimited",
-      payoutLimit
-    );
-    const hitRes = distributeMoneyCapFirst(
-      rows,
-      netAfterTax,
-      "uncappedEligibleHits",
-      "hitLimitedEligibleHits",
-      "payLimited",
-      payoutLimit
-    );
+    const salariedPoolEl = document.getElementById("salariedPoolAmt");
+    salariedPoolEl.classList.remove("neg");
 
-    const salaryPerPerson = salariedMembers.length > 0 ? Math.floor(salariedPool / salariedMembers.length) : 0;
-
-    let totalDistributed = 0;
     let totalWeightedRespect = 0;
     let totalHitsMade = 0;
 
-    latestRows = rows.map((r, idx) => {
-      if (r.excluded) {
+    if (payoutMode === "fixed_rate") {
+      // Fixed Rate Mode: calculate hit/respect pay first, then split remainder among salaried members
+      const hasMoneyCap = payoutLimit > 0;
+      let totalEarnedPaid = 0;
+
+      const computed = rows.map(r => {
+        if (r.excluded) {
+          return {
+            ...r,
+            countedHitsMade: 0,
+            isHitCapped: false,
+            weightedRespect: 0,
+            respectPay: 0,
+            hitPay: 0,
+            earnedPay: 0,
+            isRespectPayCapped: false,
+            isHitPayCapped: false,
+            isEarnedPayCapped: false
+          };
+        }
+
+        const isPayable = !r.salaried || salariedEarnHits;
+        if (!isPayable) {
+          return {
+            ...r,
+            countedHitsMade: r.rawHitsMade,
+            isHitCapped: false,
+            weightedRespect: r.rawWeightedRespect,
+            respectPay: 0,
+            hitPay: 0,
+            earnedPay: 0,
+            isRespectPayCapped: false,
+            isHitPayCapped: false,
+            isEarnedPayCapped: false
+          };
+        }
+
+        // Money cap evaluated first on uncapped hits/respect regardless of hit cap
+        const uncappedHitPay = Math.floor(r.rawHitsMade * payPerHit);
+        const uncappedRespectPay = Math.floor(r.rawWeightedRespect * payPerRespect);
+        const uncappedCombined = uncappedHitPay + uncappedRespectPay;
+
+        const hitsMoneyCapFirst = hasMoneyCap && r.payLimited && uncappedCombined >= payoutLimit;
+        const isHitCapped = r.hasHitCap && !hitsMoneyCapFirst;
+
+        const countedHitsMade = isHitCapped ? r.hitLimitedHitsMade : r.rawHitsMade;
+        const weightedRespect = isHitCapped ? r.hitLimitedWeightedRespect : r.rawWeightedRespect;
+
+        totalHitsMade += countedHitsMade;
+        totalWeightedRespect += weightedRespect;
+
+        let rawHitPay = Math.floor(countedHitsMade * payPerHit);
+        let rawRespectPay = Math.floor(weightedRespect * payPerRespect);
+        let earnedPay = rawHitPay + rawRespectPay;
+        let isEarnedPayCapped = false;
+
+        if (hasMoneyCap && r.payLimited && earnedPay >= payoutLimit) {
+          const capFloor = Math.floor(payoutLimit);
+          isEarnedPayCapped = true;
+          if (earnedPay > 0) {
+            rawHitPay = Math.floor(capFloor * (rawHitPay / earnedPay));
+            rawRespectPay = capFloor - rawHitPay;
+          }
+          earnedPay = capFloor;
+        }
+
+        totalEarnedPaid += earnedPay;
+
         return {
           ...r,
-          countedHitsMade: 0,
-          isHitCapped: false,
-          weightedRespect: 0,
-          salaryPay: 0,
-          respectPay: 0,
-          hitPay: 0,
-          isRespectPayCapped: false,
-          isHitPayCapped: false
+          countedHitsMade,
+          isHitCapped,
+          weightedRespect,
+          respectPay: rawRespectPay,
+          hitPay: rawHitPay,
+          earnedPay,
+          isRespectPayCapped: isEarnedPayCapped && rawRespectPay > 0,
+          isHitPayCapped: isEarnedPayCapped && rawHitPay > 0,
+          isEarnedPayCapped
         };
-      }
+      });
 
-      const isRespectPayCapped = Boolean(respectRes.hitMoneyCap[idx]);
-      const isHitPayCapped = Boolean(hitRes.hitMoneyCap[idx]);
-      const isHitCapped = r.hasHitCap && !isRespectPayCapped;
+      const remainderRaw = netAfterTax - totalEarnedPaid;
+      const remainderPositive = Math.max(0, remainderRaw);
+      const salaryPerPerson = salariedMembers.length > 0
+        ? Math.floor(remainderPositive / salariedMembers.length)
+        : 0;
+      const totalSalaryPaid = salaryPerPerson * salariedMembers.length;
+      const unallocatedAmt = Math.max(0, remainderRaw - totalSalaryPaid);
 
-      const countedHitsMade = isHitCapped ? r.hitLimitedHitsMade : r.rawHitsMade;
-      const weightedRespect = isHitCapped ? r.hitLimitedWeightedRespect : r.rawWeightedRespect;
+      latestRows = computed.map(r => {
+        const salaryPay = (!r.excluded && r.salaried) ? salaryPerPerson : 0;
+        const totalPay = salaryPay + r.earnedPay;
+        return { ...r, salaryPay, totalPay };
+      });
 
-      const isPayable = !r.salaried || salariedEarnHits;
-      if (isPayable) {
-        totalWeightedRespect += weightedRespect;
-        totalHitsMade += countedHitsMade;
-      }
+      sortLatestRows();
 
-      const salaryPay = r.salaried ? salaryPerPerson : 0;
-      const respectPay = respectRes.payouts[idx] || 0;
-      const hitPay = hitRes.payouts[idx] || 0;
-      totalDistributed += salaryPay + respectPay;
+      document.getElementById("netAfterTax").textContent = formatMoney(netAfterTax);
+      document.getElementById("hitPoolAmt").textContent = formatMoney(totalEarnedPaid);
+      salariedPoolEl.textContent = remainderRaw < 0
+        ? `-${formatMoney(Math.abs(remainderRaw))}`
+        : formatMoney(totalSalaryPaid);
+      if (remainderRaw < 0) salariedPoolEl.classList.add("neg");
+      document.getElementById("factionCutAmt").textContent = formatMoney(unallocatedAmt);
+      document.getElementById("totalRespect").textContent = totalWeightedRespect.toFixed(2);
+      document.getElementById("totalQualifyingHits").textContent = totalHitsMade.toLocaleString("en-US");
+    } else {
+      // Pool Split Mode: Faction Cut % + Salaried Pool % first, remainder split proportionally
+      const baseFactionCut = netAfterTax * (factionCutPct / 100);
+      const distributable = netAfterTax - baseFactionCut;
+      const salariedPool = salariedMembers.length > 0 ? distributable * (salariedPct / 100) : 0;
+      const remainingPool = distributable - salariedPool;
 
-      return {
-        ...r,
-        countedHitsMade,
-        isHitCapped,
-        weightedRespect,
-        salaryPay,
-        respectPay,
-        hitPay,
-        isRespectPayCapped,
-        isHitPayCapped
-      };
-    });
+      const respectRes = distributeMoneyCapFirst(
+        rows,
+        remainingPool,
+        "uncappedEligibleRespect",
+        "hitLimitedEligibleRespect",
+        "payLimited",
+        payoutLimit
+      );
+      const hitRes = distributeMoneyCapFirst(
+        rows,
+        netAfterTax,
+        "uncappedEligibleHits",
+        "hitLimitedEligibleHits",
+        "payLimited",
+        payoutLimit
+      );
 
-    sortLatestRows();
+      const salaryPerPerson = salariedMembers.length > 0 ? Math.floor(salariedPool / salariedMembers.length) : 0;
+      let totalDistributed = 0;
 
-    const finalFactionCut = Math.max(0, Math.floor(netAfterTax - totalDistributed));
+      latestRows = rows.map((r, idx) => {
+        if (r.excluded) {
+          return {
+            ...r,
+            countedHitsMade: 0,
+            isHitCapped: false,
+            weightedRespect: 0,
+            salaryPay: 0,
+            respectPay: 0,
+            hitPay: 0,
+            totalPay: 0,
+            isRespectPayCapped: false,
+            isHitPayCapped: false,
+            isEarnedPayCapped: false
+          };
+        }
 
-    document.getElementById("netAfterTax").textContent = formatMoney(Math.floor(netAfterTax));
-    document.getElementById("factionCutAmt").textContent = formatMoney(finalFactionCut);
-    document.getElementById("salariedPoolAmt").textContent = formatMoney(salaryPerPerson * salariedMembers.length);
-    document.getElementById("hitPoolAmt").textContent = formatMoney(Math.floor(remainingPool));
-    document.getElementById("totalRespect").textContent = totalWeightedRespect.toFixed(2);
-    document.getElementById("totalQualifyingHits").textContent = totalHitsMade.toLocaleString("en-US");
+        const isRespectPayCapped = Boolean(respectRes.hitMoneyCap[idx]);
+        const isHitPayCapped = Boolean(hitRes.hitMoneyCap[idx]);
+        const isHitCapped = r.hasHitCap && !isRespectPayCapped;
+
+        const countedHitsMade = isHitCapped ? r.hitLimitedHitsMade : r.rawHitsMade;
+        const weightedRespect = isHitCapped ? r.hitLimitedWeightedRespect : r.rawWeightedRespect;
+
+        const isPayable = !r.salaried || salariedEarnHits;
+        if (isPayable) {
+          totalWeightedRespect += weightedRespect;
+          totalHitsMade += countedHitsMade;
+        }
+
+        const salaryPay = r.salaried ? salaryPerPerson : 0;
+        const respectPay = respectRes.payouts[idx] || 0;
+        const hitPay = hitRes.payouts[idx] || 0;
+        const totalPay = salaryPay + respectPay;
+        totalDistributed += totalPay;
+
+        return {
+          ...r,
+          countedHitsMade,
+          isHitCapped,
+          weightedRespect,
+          salaryPay,
+          respectPay,
+          hitPay,
+          totalPay,
+          isRespectPayCapped,
+          isHitPayCapped,
+          isEarnedPayCapped: isRespectPayCapped
+        };
+      });
+
+      sortLatestRows();
+
+      const finalFactionCut = Math.max(0, Math.floor(netAfterTax - totalDistributed));
+
+      document.getElementById("netAfterTax").textContent = formatMoney(netAfterTax);
+      document.getElementById("hitPoolAmt").textContent = formatMoney(Math.floor(remainingPool));
+      salariedPoolEl.textContent = formatMoney(salaryPerPerson * salariedMembers.length);
+      document.getElementById("factionCutAmt").textContent = formatMoney(finalFactionCut);
+      document.getElementById("totalRespect").textContent = totalWeightedRespect.toFixed(2);
+      document.getElementById("totalQualifyingHits").textContent = totalHitsMade.toLocaleString("en-US");
+    }
 
     renderTableHeaders();
     renderTable();
@@ -1037,7 +1202,7 @@
   function renderTable() {
     const tbody = document.getElementById("memberTableBody");
     if (latestRows.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; color:var(--muted); padding:16px;">No members loaded yet. Sync from Torn or select a saved war.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="14" style="text-align:center; color:var(--muted); padding:16px;">No members loaded yet. Sync from Torn or select a saved war.</td></tr>`;
       return;
     }
 
@@ -1054,8 +1219,9 @@
         <td style="color: var(--muted)">${r.ignoredOutsideHits}</td>
         <td><strong>${r.weightedRespect.toFixed(2)}</strong></td>
         <td>${formatMoney(r.salaryPay)}</td>
-        <td style="color: var(--green); font-weight: 700;">${formatMoney(r.respectPay)}${r.isRespectPayCapped ? `<span class="cap-badge" title="Capped at Max Payout Limit">MAX</span>` : ""}</td>
-        <td style="color: var(--amber); font-weight: 700;">${formatMoney(r.hitPay)}${r.isHitPayCapped ? `<span class="cap-badge" title="Capped at Max Payout Limit">MAX</span>` : ""}</td>
+        <td style="color: var(--green);">${formatMoney(r.respectPay)}${r.isRespectPayCapped ? `<span class="cap-badge" title="Capped at Max Payout Limit">MAX</span>` : ""}</td>
+        <td style="color: var(--amber);">${formatMoney(r.hitPay)}${r.isHitPayCapped ? `<span class="cap-badge" title="Capped at Max Payout Limit">MAX</span>` : ""}</td>
+        <td style="color: var(--text); font-weight: 700;">${formatMoney(r.totalPay)}${r.isEarnedPayCapped ? `<span class="cap-badge" title="Capped at Max Payout Limit">MAX</span>` : ""}</td>
       </tr>
     `).join("");
   }
@@ -1078,6 +1244,7 @@
       await db.ref(`wars/${warKey}`).update({
         members: membersMap,
         payoutConfig: {
+          payoutMode: document.getElementById("payoutMode").value,
           warStart: Number(document.getElementById("warStart").value) || 0,
           warEnd: Number(document.getElementById("warEnd").value) || 0,
           myFactionId: Number(document.getElementById("myFactionId").value) || 0,
@@ -1085,6 +1252,8 @@
           enemyName: vsMatch ? vsMatch[1] : "",
           sellAmount: Number(document.getElementById("sellAmount").value) || 0,
           sellTaxPct: Number(document.getElementById("sellTaxPct").value) || 0,
+          payPerHit: Number(document.getElementById("payPerHit").value) || 0,
+          payPerRespect: Number(document.getElementById("payPerRespect").value) || 0,
           factionCutPct: Number(document.getElementById("factionCutPct").value) || 0,
           salariedPct: Number(document.getElementById("salariedPct").value) || 0,
           outsideHitRespect: Number(document.getElementById("outsideHitRespect").value) || 0,
@@ -1108,8 +1277,8 @@
 
   function copyPayoutList() {
     const lines = latestRows
-      .filter(r => !r.excluded && (r.salaryPay > 0 || r.respectPay > 0))
-      .map(r => `${r.name} [${r.id}] - ${formatMoney(r.salaryPay + r.respectPay)}`);
+      .filter(r => !r.excluded && r.totalPay > 0)
+      .map(r => `${r.name} [${r.id}] - ${formatMoney(r.totalPay)}`);
     if (lines.length === 0) return setStatus("No payouts above $0 to copy.", "err");
     navigator.clipboard.writeText(lines.join("\n"));
     setStatus(`Copied ${lines.length} member payouts to clipboard.`, "ok");
@@ -1128,7 +1297,7 @@
 
   loadLocalApiKey();
   renderTableHeaders();
-  recalculate();
+  onPayoutModeChange();
   if (db) {
     refreshSavedWarsList().then(() => {
       setStatus("Connected to RazersAllianceWarPayout DB. Enter your Torn API key and click Sync.", "ok");
